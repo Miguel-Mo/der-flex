@@ -4,13 +4,14 @@ Estos valores sirven para detectar divergencias. El auditor debe reproducirlos c
 su entorno lo permita.
 
 - `verify_bundle.py`: PASS; todos los hashes y archivos coinciden.
-- pytest: 101 pruebas superadas y un aviso upstream Starlette/AnyIO.
+- pytest sin PostgreSQL: 101 pruebas superadas, 20 omitidas y un aviso upstream
+  Starlette/AnyIO. Con `DER_FLEX_TEST_DATABASE_URL`: 121 pruebas superadas.
 - Ruff: sin incidencias.
-- mypy: sin incidencias en los 51 archivos Python de `src/`, `scripts/` y `tests/`.
+- mypy: sin incidencias en los 60 archivos Python de `src/`, `scripts/` y `tests/`.
 - S2: 16 mensajes wire validados.
 - fuzzing: 1.205 entradas deterministas por ejecución.
 - mutación dirigida: 6/6 mutantes eliminados, 100 %.
-- trazabilidad: 17 claims y 77 referencias válidas.
+- trazabilidad: 18 claims y 91 referencias válidas.
 - SBOM: 18 componentes transitivos y 25 relaciones.
 - wheelhouse: 21 wheels, 18 componentes, hashes coincidentes.
 - instalación offline: `pip check` limpio, versión 0.1.0 y 14 rutas.
@@ -34,6 +35,6 @@ Los hashes concretos se leen de `evidence/SHA256SUMS`; no se duplican aquí para
 una dependencia circular al regenerar el expediente.
 
 Resultados externos deliberadamente no esperados: esquema oficial OpenADR,
-certificación S2/OpenADR, CI/tag/firma públicos, persistencia, multiproceso,
-autenticación multi-tenant y validación jurídica u operacional con DER reales.
+certificación S2/OpenADR, CI/tag/firma públicos, autenticación multi-tenant,
+administración segura y validación jurídica u operacional con DER reales.
 La repetición independiente de Docker continúa fuera del alcance local.

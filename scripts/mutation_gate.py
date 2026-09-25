@@ -103,6 +103,7 @@ def run_mutation(mutation: Mutation, workspace: Path) -> dict[str, object]:
         capture_output=True,
         text=True,
         encoding="utf-8",
+        errors="replace",
         env={**os.environ, "PYTHONPATH": str(source_root)},
     )
     output = "\n".join(part for part in (result.stdout, result.stderr) if part).strip()

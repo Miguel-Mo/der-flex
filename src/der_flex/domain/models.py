@@ -97,9 +97,9 @@ class Activation(BaseModel):
     activation_id: UUID
     reservation_id: UUID
     correlation_id: UUID
-    status: Literal["COMPLETED", "FAILED"]
+    status: Literal["PENDING", "COMPLETED", "FAILED"]
     instruction_count: int = Field(ge=0)
     accepted_instruction_count: int = Field(ge=0)
     rejected_instruction_count: int = Field(ge=0)
     created_at: datetime
-    completed_at: datetime
+    completed_at: datetime | None = None

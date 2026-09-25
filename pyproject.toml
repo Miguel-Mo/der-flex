@@ -33,6 +33,7 @@ dev = [
 
 [project.scripts]
 der-flex-demo = "der_flex.demo:main"
+der-flex-outbox = "der_flex.outbox:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

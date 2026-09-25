@@ -22,7 +22,7 @@ def main() -> None:
     PostgresReservationBackend(arguments.database_url).initialize()
     PostgresResourceRegistry(arguments.database_url)
     PostgresOfferStore(arguments.database_url)
-    print("PostgreSQL schema is at version 2")
+    print("PostgreSQL schema is at version 3")
 
 
 if __name__ == "__main__":

@@ -46,9 +46,13 @@ O bien, con un único comando:
 docker compose up --build
 ```
 
-Compose arranca PostgreSQL y configura la demo para persistir el registro físico,
+El valor de `DER_FLEX_WEBHOOK_SECRET` debe configurarse fuera de la demo y ser idéntico
+en la API y todos los workers; el valor por defecto de Compose es solo local.
+
+Compose arranca PostgreSQL, la API y un worker de outbox, y configura la demo para persistir el registro físico,
 ofertas normalizadas, posiciones de sesión, cohortes públicas, reservas, asignaciones,
-claves idempotentes, activaciones, instrucciones y el estado de supresión. El esquema
+claves idempotentes, activaciones, instrucciones, entregas pendientes y el estado de
+supresión. El esquema
 se aplica de forma idempotente al iniciar y también puede aplicarse explícitamente:
 
 ```powershell
@@ -82,7 +86,7 @@ dependencias desde `vendor/wheelhouse` usando los hashes de `requirements-runtim
 El wheelhouse cubre CPython 3.13 en Windows AMD64 y Linux x86-64.
 La instalación editable usa `requirements-runtime.constraints` para conservar ese mismo
 cierre de producción aunque aparezcan versiones transitivas nuevas en el índice.
-El segundo script genera un TAR canónico v4.6 y un ZIP de transporte de tres archivos.
+El segundo script genera un TAR canónico v4.7 y un ZIP de transporte de tres archivos.
 Un auditor puede verificarlo con Python estándar sin depender del sitio web ni de que
 su plataforma conserve extensiones de código dentro de ZIP anidados.
 
@@ -123,6 +127,13 @@ sobre frescura y no convierte el agregado en anónimo. Cuando se configura Postg
 la atomicidad de reservas serializa decisiones de capacidad por producto con bloqueos
 transaccionales compartidos, por lo que varias instancias no pueden confirmar dos veces
 la misma capacidad. Ofertas, registro físico, reservas y estados de privacidad se
-recuperan después de reiniciar. Todavía faltan una outbox durable, autenticación,
-aislamiento multi-tenant y administración segura; por tanto, esta rama no está preparada
-para DER o datos reales.
+recuperan después de reiniciar. Las instrucciones y webhooks se escriben en la misma
+transacción que la activación. Un worker las reclama con `FOR UPDATE SKIP LOCKED`, lease
+recuperable y reintento con backoff; los identificadores estables permiten deduplicar
+webhooks. La activación queda `PENDING` hasta que todas las instrucciones terminan y solo
+entonces pasa a `COMPLETED` o `FAILED`. La entrega es *al menos una vez*, no exactamente
+una vez. El aceptador de recursos de la demo es sintético y debe sustituirse por un
+adaptador S2 real.
+
+Todavía faltan autenticación, aislamiento multi-tenant y administración segura; por
+tanto, esta rama no está preparada para DER o datos reales.

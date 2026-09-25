@@ -54,7 +54,14 @@ class WebhookDispatcher:
         self.sender = sender
         self.deliveries: list[WebhookDelivery] = []
 
-    def deliver(self, callback_url: str, event: str, payload: dict[str, object]) -> None:
+    def send_once(
+        self,
+        callback_url: str,
+        event: str,
+        payload: dict[str, object],
+        *,
+        event_id: str | None = None,
+    ) -> tuple[bool, str | None]:
         body = json.dumps(payload, sort_keys=True, default=str, separators=(",", ":")).encode()
         signature = hmac.new(self.secret, body, hashlib.sha256).hexdigest()
         headers = {
@@ -62,14 +69,22 @@ class WebhookDispatcher:
             "X-DER-Flex-Event": event,
             "X-DER-Flex-Signature": f"sha256={signature}",
         }
+        if event_id:
+            headers["X-DER-Flex-Event-ID"] = event_id
+        try:
+            status = self.sender(callback_url, body, headers)
+        except OSError as error:
+            return False, f"{type(error).__name__}: {error}"
+        if 200 <= status < 300:
+            return True, None
+        return False, f"HTTP {status}"
+
+    def deliver(self, callback_url: str, event: str, payload: dict[str, object]) -> None:
         delivered = False
         attempts = 0
         for attempt_number in range(1, self.max_attempts + 1):
             attempts = attempt_number
-            try:
-                delivered = 200 <= self.sender(callback_url, body, headers) < 300
-            except OSError:
-                delivered = False
+            delivered, _error = self.send_once(callback_url, event, payload)
             if delivered:
                 break
         self.deliveries.append(WebhookDelivery(event, callback_url, attempts, delivered))

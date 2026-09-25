@@ -1,4 +1,4 @@
-# Prompt de revisión adversarial independiente — bundle v4.6
+# Prompt de revisión adversarial independiente — bundle v4.7
 
 Actúa como auditor independiente y hostil a las afirmaciones. Trabaja únicamente con
 los archivos recibidos y no presupongas que su evidencia es correcta. Si recibes el
@@ -12,7 +12,7 @@ procedencia. No uses resultados narrados para sustituir una ejecución que sí p
 realizar.
 
 Después revisa los claims T01, T02, P01, P02, PR01, C01, S01, PERF01, SEC01 y PKG01,
-además de ORD01, PHY01, FZ01, MT01, SBOM01 y OFF01. Para cada uno comunica:
+además de ORD01, PHY01, FZ01, MT01, SBOM01, OFF01, OUT01 y BND01. Para cada uno comunica:
 
 - `PASS`, `PASS_WITH_SCOPE_LIMIT`, `FAIL` o `NOT_VERIFIABLE`;
 - pruebas y comandos realmente ejecutados;
@@ -24,6 +24,14 @@ Intenta refutar específicamente: supresión tras cambios de cohorte, valor y re
 doble venta concurrente; replay de sesiones; ampliación fraudulenta de límites físicos;
 valores no finitos; duración OpenADR excesiva; wheelhouse alterado; referencias de
 trazabilidad rotas y mutantes supervivientes.
+
+Para OUT01 usa PostgreSQL real y ejecuta `tests/test_postgres_outbox.py`. Comprueba que
+ningún webhook ni instrucción se invoca antes del commit; que un proceso nuevo recupera
+el trabajo; que rollback no deja tareas; que dos workers no reclaman el mismo evento;
+que un lease caducado se recupera sin que el worker antiguo pueda confirmar su intento;
+que errores transitorios reintentan y rechazos funcionales terminan en `FAILED`. Verifica
+los tres webhooks y la estabilidad de `X-DER-Flex-Event-ID`. No presentes entrega
+*al menos una vez* como exactamente una vez ni el aceptador sintético como transporte S2.
 
 Presta atención especial a los cambios y regresiones de este corte:
 
@@ -77,7 +85,7 @@ límite de reproducibilidad de imagen, separado de la validez funcional de PKG01
 Finaliza con dos decisiones separadas: publicación experimental y uso con DER/datos
 reales. Enumera primero los hallazgos nuevos por severidad y después los límites ya
 declarados, para no presentar estos últimos como descubrimientos. Incluye una tabla
-de los 17 claims y una sección específica que diga si el anterior hallazgo medio de
+de los 18 claims y una sección específica que diga si el anterior hallazgo medio de
 compresión cross-OS queda `RESOLVED`, `PARTIAL` o `OPEN`, con la evidencia que sustenta
    esa decisión. El wheel ya coincidió en una reconstrucción Linux de v4.2. Comprueba
    específicamente si ha desaparecido el vector restante encontrado allí: modos

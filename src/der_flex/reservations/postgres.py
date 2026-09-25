@@ -4,7 +4,7 @@ import json
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 import psycopg
@@ -16,7 +16,7 @@ from der_flex.domain.models import (
     FlexibilityOffer,
     Reservation,
 )
-from der_flex.reservations.backend import Allocation, ProductCell, Residual
+from der_flex.reservations.backend import Allocation, OutboxTask, ProductCell, Residual
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS der_flex_schema_migrations (
@@ -87,14 +87,22 @@ CREATE TABLE IF NOT EXISTS der_flex_activations (
     accepted_instruction_count integer NOT NULL,
     rejected_instruction_count integer NOT NULL,
     created_at timestamptz NOT NULL,
-    completed_at timestamptz NOT NULL,
-    CONSTRAINT der_flex_activation_status CHECK (status IN ('COMPLETED', 'FAILED')),
+    completed_at timestamptz,
+    CONSTRAINT der_flex_activation_status CHECK (
+        status IN ('PENDING', 'COMPLETED', 'FAILED')
+    ),
     CONSTRAINT der_flex_activation_counts CHECK (
         instruction_count >= 0 AND accepted_instruction_count >= 0
         AND rejected_instruction_count >= 0
-        AND accepted_instruction_count + rejected_instruction_count = instruction_count
+        AND accepted_instruction_count + rejected_instruction_count <= instruction_count
     ),
-    CONSTRAINT der_flex_activation_time CHECK (completed_at >= created_at)
+    CONSTRAINT der_flex_activation_completion CHECK (
+        (status = 'PENDING' AND completed_at IS NULL)
+        OR (
+            status IN ('COMPLETED', 'FAILED') AND completed_at >= created_at
+            AND accepted_instruction_count + rejected_instruction_count = instruction_count
+        )
+    )
 );
 CREATE TABLE IF NOT EXISTS der_flex_instructions (
     activation_id uuid NOT NULL REFERENCES der_flex_activations(activation_id)
@@ -103,6 +111,32 @@ CREATE TABLE IF NOT EXISTS der_flex_instructions (
     payload jsonb NOT NULL,
     PRIMARY KEY (activation_id, instruction_index)
 );
+CREATE TABLE IF NOT EXISTS der_flex_outbox (
+    event_id uuid PRIMARY KEY,
+    kind text NOT NULL CHECK (kind IN ('RESOURCE', 'WEBHOOK')),
+    destination text NOT NULL CHECK (destination <> ''),
+    event_type text NOT NULL CHECK (event_type <> ''),
+    payload jsonb NOT NULL CHECK (jsonb_typeof(payload) = 'object'),
+    activation_id uuid NOT NULL REFERENCES der_flex_activations(activation_id)
+        ON DELETE CASCADE,
+    reservation_id uuid NOT NULL REFERENCES der_flex_reservations(reservation_id)
+        ON DELETE CASCADE,
+    allocation_index integer,
+    status text NOT NULL DEFAULT 'PENDING'
+        CHECK (status IN ('PENDING', 'PROCESSING', 'RETRY', 'DELIVERED', 'DEAD')),
+    attempts integer NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+    available_at timestamptz NOT NULL,
+    locked_until timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    delivered_at timestamptz,
+    last_error text,
+    CONSTRAINT der_flex_outbox_allocation CHECK (
+        (kind = 'RESOURCE' AND allocation_index IS NOT NULL)
+        OR (kind = 'WEBHOOK' AND allocation_index IS NULL)
+    )
+);
+CREATE INDEX IF NOT EXISTS der_flex_outbox_claim_idx
+    ON der_flex_outbox (status, available_at, created_at);
 CREATE TABLE IF NOT EXISTS der_flex_public_residuals (
     zone_id text NOT NULL,
     interval_start timestamptz NOT NULL,
@@ -120,6 +154,45 @@ CREATE TABLE IF NOT EXISTS der_flex_public_residuals (
     PRIMARY KEY (zone_id, interval_start, interval_end, consequence_type)
 );
 INSERT INTO der_flex_schema_migrations (version) VALUES (1)
+ON CONFLICT (version) DO NOTHING;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM der_flex_schema_migrations WHERE version = 3
+    ) THEN
+        ALTER TABLE der_flex_activations
+            ALTER COLUMN completed_at DROP NOT NULL;
+        ALTER TABLE der_flex_activations
+            DROP CONSTRAINT IF EXISTS der_flex_activation_status;
+        ALTER TABLE der_flex_activations
+            DROP CONSTRAINT IF EXISTS der_flex_activation_counts;
+        ALTER TABLE der_flex_activations
+            DROP CONSTRAINT IF EXISTS der_flex_activation_time;
+        ALTER TABLE der_flex_activations
+            DROP CONSTRAINT IF EXISTS der_flex_activation_completion;
+        ALTER TABLE der_flex_activations
+            ADD CONSTRAINT der_flex_activation_status CHECK (
+                status IN ('PENDING', 'COMPLETED', 'FAILED')
+            );
+        ALTER TABLE der_flex_activations
+            ADD CONSTRAINT der_flex_activation_counts CHECK (
+                instruction_count >= 0 AND accepted_instruction_count >= 0
+                AND rejected_instruction_count >= 0
+                AND accepted_instruction_count + rejected_instruction_count
+                    <= instruction_count
+            );
+        ALTER TABLE der_flex_activations
+            ADD CONSTRAINT der_flex_activation_completion CHECK (
+                (status = 'PENDING' AND completed_at IS NULL)
+                OR (
+                    status IN ('COMPLETED', 'FAILED') AND completed_at >= created_at
+                    AND accepted_instruction_count + rejected_instruction_count
+                        = instruction_count
+                )
+            );
+    END IF;
+END $$;
+INSERT INTO der_flex_schema_migrations (version) VALUES (3)
 ON CONFLICT (version) DO NOTHING;
 """
 
@@ -375,6 +448,28 @@ class PostgresReservationUnitOfWork:
                 ],
             )
 
+    def enqueue_outbox(self, task: OutboxTask, *, available_at: datetime) -> None:
+        self.connection.execute(
+            """
+            INSERT INTO der_flex_outbox (
+                event_id, kind, destination, event_type, payload,
+                activation_id, reservation_id, allocation_index, available_at
+            ) VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s)
+            ON CONFLICT (event_id) DO NOTHING
+            """,
+            (
+                task.event_id,
+                task.kind,
+                task.destination,
+                task.event_type,
+                json.dumps(task.payload, sort_keys=True, default=str),
+                task.activation_id,
+                task.reservation_id,
+                task.allocation_index,
+                available_at,
+            ),
+        )
+
     def instructions_for(self, activation_id: uuid.UUID) -> tuple[dict[str, object], ...]:
         rows = self.connection.execute(
             """
@@ -459,6 +554,8 @@ class PostgresReservationUnitOfWork:
 class PostgresReservationBackend:
     """Durable reservation state with transaction-scoped cross-process locks."""
 
+    durable_outbox = True
+
     def __init__(self, dsn: str) -> None:
         self.dsn = dsn
 
@@ -478,7 +575,7 @@ class PostgresReservationBackend:
         with self._connect() as connection:
             connection.execute(
                 """
-                TRUNCATE der_flex_instructions, der_flex_activations,
+                TRUNCATE der_flex_outbox, der_flex_instructions, der_flex_activations,
                          der_flex_allocations, der_flex_reservations,
                          der_flex_public_residuals CASCADE
                 """
@@ -499,3 +596,216 @@ class PostgresReservationBackend:
                     (key,),
                 )
             yield PostgresReservationUnitOfWork(connection)
+
+    def claim_outbox(
+        self, *, now: datetime, limit: int, lease_seconds: int
+    ) -> tuple[OutboxTask, ...]:
+        locked_until = now + timedelta(seconds=lease_seconds)
+        with self._connect() as connection, connection.transaction():
+            rows = connection.execute(
+                """
+                WITH candidates AS (
+                    SELECT event_id
+                    FROM der_flex_outbox
+                    WHERE (
+                        status IN ('PENDING', 'RETRY') AND available_at <= %s
+                    ) OR (
+                        status = 'PROCESSING' AND locked_until <= %s
+                    )
+                    ORDER BY created_at,
+                        CASE event_type
+                            WHEN 'activation.accepted' THEN 0
+                            WHEN 'activation.started' THEN 1
+                            WHEN 'pebc.instruction' THEN 2
+                            ELSE 3
+                        END,
+                        event_id
+                    FOR UPDATE SKIP LOCKED
+                    LIMIT %s
+                )
+                UPDATE der_flex_outbox AS outbox
+                SET status = 'PROCESSING', attempts = outbox.attempts + 1,
+                    locked_until = %s
+                FROM candidates
+                WHERE outbox.event_id = candidates.event_id
+                RETURNING outbox.event_id, outbox.kind, outbox.destination,
+                          outbox.event_type, outbox.payload, outbox.attempts,
+                          outbox.activation_id, outbox.reservation_id,
+                          outbox.allocation_index
+                """,
+                (now, now, limit, locked_until),
+            ).fetchall()
+        return tuple(
+            OutboxTask(
+                event_id=row["event_id"],
+                kind=row["kind"],
+                destination=row["destination"],
+                event_type=row["event_type"],
+                payload=dict(row["payload"]),
+                attempts=row["attempts"],
+                activation_id=row["activation_id"],
+                reservation_id=row["reservation_id"],
+                allocation_index=row["allocation_index"],
+            )
+            for row in rows
+        )
+
+    def resolve_outbox(
+        self,
+        task: OutboxTask,
+        *,
+        delivered: bool,
+        retryable: bool,
+        error: str | None,
+        now: datetime,
+        max_attempts: int,
+    ) -> None:
+        with self._connect() as connection, connection.transaction():
+            row = connection.execute(
+                """
+                SELECT status, attempts FROM der_flex_outbox
+                WHERE event_id = %s FOR UPDATE
+                """,
+                (task.event_id,),
+            ).fetchone()
+            if (
+                row is None
+                or row["status"] != "PROCESSING"
+                or row["attempts"] != task.attempts
+            ):
+                return
+
+            terminal = delivered or not retryable or row["attempts"] >= max_attempts
+            if delivered:
+                status = "DELIVERED"
+                available_at = now
+            elif terminal:
+                status = "DEAD"
+                available_at = now
+            else:
+                status = "RETRY"
+                delay_seconds = min(300, 2 ** max(0, row["attempts"] - 1))
+                available_at = now + timedelta(seconds=delay_seconds)
+            connection.execute(
+                """
+                UPDATE der_flex_outbox
+                SET status = %s, available_at = %s, locked_until = NULL,
+                    delivered_at = CASE WHEN %s THEN %s ELSE NULL END,
+                    last_error = %s
+                WHERE event_id = %s
+                """,
+                (
+                    status,
+                    available_at,
+                    delivered,
+                    now,
+                    None if delivered else (error or "delivery rejected")[:1000],
+                    task.event_id,
+                ),
+            )
+            if task.kind == "RESOURCE" and terminal:
+                self._finalize_activation(connection, task.activation_id, now)
+
+    @staticmethod
+    def _finalize_activation(
+        connection: psycopg.Connection[dict[str, Any]],
+        activation_id: uuid.UUID,
+        now: datetime,
+    ) -> None:
+        activation_row = connection.execute(
+            """
+            SELECT a.*, r.callback_url
+            FROM der_flex_activations a
+            JOIN der_flex_reservations r USING (reservation_id)
+            WHERE a.activation_id = %s FOR UPDATE OF a, r
+            """,
+            (activation_id,),
+        ).fetchone()
+        if activation_row is None or activation_row["status"] != "PENDING":
+            return
+        tasks = connection.execute(
+            """
+            SELECT allocation_index, status FROM der_flex_outbox
+            WHERE activation_id = %s AND kind = 'RESOURCE'
+            ORDER BY allocation_index
+            """,
+            (activation_id,),
+        ).fetchall()
+        if not tasks or any(row["status"] not in {"DELIVERED", "DEAD"} for row in tasks):
+            return
+        accepted_indices = [
+            row["allocation_index"] for row in tasks if row["status"] == "DELIVERED"
+        ]
+        accepted_count = len(accepted_indices)
+        rejected_count = len(tasks) - accepted_count
+        result_status = "FAILED" if rejected_count else "COMPLETED"
+        power_row = connection.execute(
+            """
+            SELECT COALESCE(SUM(power_kw), 0.0) AS accepted_power
+            FROM der_flex_allocations
+            WHERE reservation_id = %s AND allocation_index = ANY(%s)
+            """,
+            (activation_row["reservation_id"], accepted_indices),
+        ).fetchone()
+        connection.execute(
+            """
+            UPDATE der_flex_activations
+            SET status = %s, accepted_instruction_count = %s,
+                rejected_instruction_count = %s, completed_at = %s
+            WHERE activation_id = %s
+            """,
+            (result_status, accepted_count, rejected_count, now, activation_id),
+        )
+        connection.execute(
+            """
+            UPDATE der_flex_reservations
+            SET status = %s, allocated_power_kw = %s
+            WHERE reservation_id = %s
+            """,
+            (
+                result_status,
+                float(power_row["accepted_power"]) if power_row else 0.0,
+                activation_row["reservation_id"],
+            ),
+        )
+        connection.execute(
+            """
+            DELETE FROM der_flex_allocations
+            WHERE reservation_id = %s AND NOT (allocation_index = ANY(%s))
+            """,
+            (activation_row["reservation_id"], accepted_indices),
+        )
+        if activation_row["callback_url"]:
+            completed = dict(activation_row)
+            completed.update(
+                status=result_status,
+                accepted_instruction_count=accepted_count,
+                rejected_instruction_count=rejected_count,
+                completed_at=now,
+            )
+            payload = _activation(completed).model_dump(mode="json")
+            event_type = (
+                "activation.failed" if result_status == "FAILED" else "activation.completed"
+            )
+            event_id = uuid.uuid5(
+                uuid.NAMESPACE_URL,
+                f"der-flex:{activation_id}:webhook:{event_type}",
+            )
+            connection.execute(
+                """
+                INSERT INTO der_flex_outbox (
+                    event_id, kind, destination, event_type, payload,
+                    activation_id, reservation_id, allocation_index, available_at
+                ) VALUES (%s, 'WEBHOOK', %s, %s, %s::jsonb, %s, %s, NULL, %s)
+                ON CONFLICT (event_id) DO NOTHING
+                """,
+                (
+                    event_id,
+                    activation_row["callback_url"],
+                    event_type,
+                    json.dumps(payload, sort_keys=True),
+                    activation_id,
+                    activation_row["reservation_id"],
+                    now,
+                ),
+            )

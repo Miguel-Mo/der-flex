@@ -19,9 +19,11 @@ from der_flex.domain.models import (
 )
 from der_flex.domain.store import OfferStore
 from der_flex.locking import product_lock_key
+from der_flex.outbox import OutboxProcessor
 from der_flex.reservations.backend import (
     Allocation,
     InMemoryReservationBackend,
+    OutboxTask,
     ReservationBackend,
 )
 
@@ -56,11 +58,18 @@ class ReservationService:
         backend: ReservationBackend | None = None,
         webhook_dispatcher: WebhookDispatcher | None = None,
         resource_acceptor: Callable[[str, dict[str, object]], bool] | None = None,
+        process_outbox_on_activate: bool = True,
     ) -> None:
         self.offer_store = offer_store
         self.backend = backend or InMemoryReservationBackend()
         self.webhook_dispatcher = webhook_dispatcher or WebhookDispatcher()
         self.resource_acceptor = resource_acceptor or (lambda _resource, _instruction: True)
+        self.process_outbox_on_activate = process_outbox_on_activate
+        self.outbox_processor = OutboxProcessor(
+            self.backend,
+            self.webhook_dispatcher,
+            self.resource_acceptor,
+        )
 
     def is_ready(self) -> bool:
         return self.backend.is_ready()
@@ -205,6 +214,8 @@ class ReservationService:
             return cancelled
 
     def activate(self, reservation_id: uuid.UUID) -> Activation:
+        if self.backend.durable_outbox:
+            return self._activate_durable(reservation_id)
         with self.backend.transaction((f"reservation:{reservation_id}",)) as state:
             existing = state.activation_for_reservation(reservation_id)
             if existing:
@@ -261,6 +272,90 @@ class ReservationService:
                 event = "activation.failed" if rejected_count else "activation.completed"
                 self._notify(callback_url, event, activation)
             return activation
+
+    @staticmethod
+    def _outbox_event_id(activation_id: uuid.UUID, suffix: str) -> uuid.UUID:
+        return uuid.uuid5(uuid.NAMESPACE_URL, f"der-flex:{activation_id}:{suffix}")
+
+    def _activate_durable(self, reservation_id: uuid.UUID) -> Activation:
+        activation_id: uuid.UUID
+        with self.backend.transaction((f"reservation:{reservation_id}",)) as state:
+            existing = state.activation_for_reservation(reservation_id)
+            if existing:
+                activation_id = existing.activation_id
+            else:
+                now = datetime.now(UTC)
+                state.expire(now)
+                reservation = state.get_reservation(reservation_id)
+                if reservation is None:
+                    raise ReservationNotFound(str(reservation_id))
+                if reservation.status != "CONFIRMED":
+                    raise ReservationStateConflict(f"cannot activate {reservation.status}")
+                allocations = state.get_allocations(reservation_id)
+                instructions = tuple(
+                    build_pebc_instruction(allocation=item, reservation=reservation)
+                    for item in allocations
+                )
+                activation_id = uuid.uuid4()
+                activation = Activation(
+                    activation_id=activation_id,
+                    reservation_id=reservation_id,
+                    correlation_id=reservation.correlation_id,
+                    status="PENDING",
+                    instruction_count=len(instructions),
+                    accepted_instruction_count=0,
+                    rejected_instruction_count=0,
+                    created_at=now,
+                    completed_at=None,
+                )
+                activated_reservation = reservation.model_copy(update={"status": "ACTIVATED"})
+                state.save_activation(
+                    activation,
+                    activated_reservation,
+                    allocations,
+                    instructions,
+                )
+                callback_url = state.callback_url(reservation_id)
+                if callback_url:
+                    reservation_payload = activated_reservation.model_dump(mode="json")
+                    for event in ("activation.accepted", "activation.started"):
+                        state.enqueue_outbox(
+                            OutboxTask(
+                                event_id=self._outbox_event_id(
+                                    activation_id, f"webhook:{event}"
+                                ),
+                                kind="WEBHOOK",
+                                destination=callback_url,
+                                event_type=event,
+                                payload=reservation_payload,
+                                attempts=0,
+                                activation_id=activation_id,
+                                reservation_id=reservation_id,
+                            ),
+                            available_at=now,
+                        )
+                for index, (allocation, instruction) in enumerate(
+                    zip(allocations, instructions, strict=True)
+                ):
+                    state.enqueue_outbox(
+                        OutboxTask(
+                            event_id=self._outbox_event_id(
+                                activation_id, f"resource:{index}"
+                            ),
+                            kind="RESOURCE",
+                            destination=allocation.resource_id,
+                            event_type="pebc.instruction",
+                            payload=instruction,
+                            attempts=0,
+                            activation_id=activation_id,
+                            reservation_id=reservation_id,
+                            allocation_index=index,
+                        ),
+                        available_at=now,
+                    )
+        if self.process_outbox_on_activate:
+            self.outbox_processor.drain()
+        return self.get_activation(activation_id)
 
     def _notify(self, callback_url: str, event: str, payload: Reservation | Activation) -> None:
         self.webhook_dispatcher.deliver(callback_url, event, payload.model_dump(mode="json"))

@@ -17,6 +17,7 @@ services:
     build: .
     environment:
       DER_FLEX_DATABASE_URL: postgresql://der_flex:der_flex_local@postgres:5432/der_flex
+      DER_FLEX_WEBHOOK_SECRET: ${DER_FLEX_WEBHOOK_SECRET:-der-flex-local-only-change-me}
     depends_on:
       postgres:
         condition: service_healthy
@@ -35,6 +36,25 @@ services:
       timeout: 3s
       retries: 5
       start_period: 5s
+
+  outbox-worker:
+    build: .
+    command: ["der-flex-outbox"]
+    environment:
+      DER_FLEX_DATABASE_URL: postgresql://der_flex:der_flex_local@postgres:5432/der_flex
+      DER_FLEX_WEBHOOK_SECRET: ${DER_FLEX_WEBHOOK_SECRET:-der-flex-local-only-change-me}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    healthcheck:
+      disable: true
 
 volumes:
   postgres-data:

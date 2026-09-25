@@ -6,7 +6,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Protocol
+from typing import Literal, Protocol
 
 from der_flex.domain.models import (
     Activation,
@@ -26,6 +26,19 @@ class Allocation:
     power_kw: float
     baseline_power_kw: float
     source_version: str
+
+
+@dataclass(frozen=True)
+class OutboxTask:
+    event_id: uuid.UUID
+    kind: Literal["RESOURCE", "WEBHOOK"]
+    destination: str
+    event_type: str
+    payload: dict[str, object]
+    attempts: int
+    activation_id: uuid.UUID
+    reservation_id: uuid.UUID
+    allocation_index: int | None = None
 
 
 class ReservationUnitOfWork(Protocol):
@@ -67,6 +80,8 @@ class ReservationUnitOfWork(Protocol):
         instructions: tuple[dict[str, object], ...],
     ) -> None: ...
 
+    def enqueue_outbox(self, task: OutboxTask, *, available_at: datetime) -> None: ...
+
     def instructions_for(self, activation_id: uuid.UUID) -> tuple[dict[str, object], ...]: ...
 
     def active_reservations(self) -> tuple[Reservation, ...]: ...
@@ -81,6 +96,8 @@ class ReservationUnitOfWork(Protocol):
 
 
 class ReservationBackend(Protocol):
+    durable_outbox: bool
+
     def is_ready(self) -> bool: ...
 
     @contextmanager
@@ -88,8 +105,25 @@ class ReservationBackend(Protocol):
         self, lock_keys: tuple[str, ...] = ()
     ) -> Iterator[ReservationUnitOfWork]: ...
 
+    def claim_outbox(
+        self, *, now: datetime, limit: int, lease_seconds: int
+    ) -> tuple[OutboxTask, ...]: ...
+
+    def resolve_outbox(
+        self,
+        task: OutboxTask,
+        *,
+        delivered: bool,
+        retryable: bool,
+        error: str | None,
+        now: datetime,
+        max_attempts: int,
+    ) -> None: ...
+
 
 class InMemoryReservationBackend:
+    durable_outbox = False
+
     def __init__(self) -> None:
         self._lock = threading.RLock()
         self._reservations: dict[uuid.UUID, Reservation] = {}
@@ -190,6 +224,27 @@ class InMemoryReservationBackend:
         self._activations[activation.activation_id] = activation
         self._activation_by_reservation[reservation.reservation_id] = activation.activation_id
         self._reservations[reservation.reservation_id] = reservation
+
+    def enqueue_outbox(self, task: OutboxTask, *, available_at: datetime) -> None:
+        del task, available_at
+
+    def claim_outbox(
+        self, *, now: datetime, limit: int, lease_seconds: int
+    ) -> tuple[OutboxTask, ...]:
+        del now, limit, lease_seconds
+        return ()
+
+    def resolve_outbox(
+        self,
+        task: OutboxTask,
+        *,
+        delivered: bool,
+        retryable: bool,
+        error: str | None,
+        now: datetime,
+        max_attempts: int,
+    ) -> None:
+        del task, delivered, retryable, error, now, max_attempts
 
     def instructions_for(self, activation_id: uuid.UUID) -> tuple[dict[str, object], ...]:
         return self._instructions[activation_id]
