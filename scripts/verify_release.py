@@ -103,6 +103,7 @@ def run(
         capture_output=True,
         text=True,
         encoding="utf-8",
+        errors="replace",
         env={
             **os.environ,
             "SOURCE_DATE_EPOCH": SOURCE_DATE_EPOCH,

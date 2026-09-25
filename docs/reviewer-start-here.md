@@ -1,4 +1,4 @@
-# DER Flex 0.1.0 — inicio de la revisión v4.6
+# DER Flex 0.1.0 — inicio de la revisión v4.7
 
 Este expediente está diseñado para revisarse sin acceder al sitio web del proyecto.
 No confíe inicialmente en `evidence.json`: verifique primero los bytes recibidos.
@@ -28,6 +28,9 @@ selectivamente `.py`, wheels o directorios anidados.
 7. Si Docker está disponible, ejecute `python source/scripts/verify_container.py`
    desde `source/` después de `verify_release.py`; el script construye una imagen Linux,
    prueba versión, procedencia desde `site-packages`, readiness y `pip check`.
+8. Para OUT01 proporcione PostgreSQL real mediante `DER_FLEX_TEST_DATABASE_URL` y
+   ejecute `python -m pytest -q source/tests/test_postgres_outbox.py` desde la raíz
+   extraída. Sin esa ejecución, OUT01 debe permanecer `NOT_VERIFIABLE`.
 
 ## Comprobación offline mínima
 
@@ -48,6 +51,6 @@ En Linux x86-64 sustituya el ejecutable por `.review-venv/bin/python`.
 ## Alcance honesto
 
 El objetivo verificable es una publicación experimental. Docker, firma/tag públicos,
-esquema oficial OpenADR, laboratorios externos, autenticación, persistencia y estado
-distribuido no se declaran completados. El uso con datos o DER reales continúa en
+esquema oficial OpenADR, laboratorios externos, autenticación, aislamiento multi-tenant
+y administración segura no se declaran completados. El uso con datos o DER reales continúa en
 `NO-GO`.

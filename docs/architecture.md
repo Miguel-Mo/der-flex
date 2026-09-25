@@ -9,8 +9,10 @@ registro físico ─────────┐
 RM simulados ──S2/PEBC──┘                         │
                                                  ├──> agregación + privacidad ──> REST
                                                  │
-                                                 └──> ledger PostgreSQL ──> activación PEBC
-                                                                     │
+                                                 └──> ledger PostgreSQL ──> outbox durable
+                                                                     │          │
+                                                                     │          ├──> activación PEBC
+                                                                     │          └──> webhooks
 OpenADR evento ──> adaptador ────────────────────────────────────────┤
 OpenADR reporte <────────────────────────── resultado agregado <─────┘
 ```
@@ -45,8 +47,10 @@ OpenADR reporte <─────────────────────
 Las interfaces `OfferStore`, `ResourceRegistry` y `ReservationBackend` conservan una
 implementación en memoria para tests y una implementación PostgreSQL para ejecución
 durable. PostgreSQL conserva registro físico, posiciones de fuente, ofertas, cohortes,
-reservas, asignaciones, idempotencia, activaciones, instrucciones y supresión pública.
+reservas, asignaciones, idempotencia, activaciones, instrucciones, outbox y supresión pública.
 Los bloqueos asesores transaccionales coordinan actualizaciones de oferta y decisiones
-de reserva sobre el mismo producto. Todavía faltan cola/outbox, OAuth2/OIDC,
+de reserva sobre el mismo producto. Los workers de outbox usan leasing y
+`SKIP LOCKED`; una caída deja el trabajo recuperable y una entrega puede repetirse.
+Todavía faltan OAuth2/OIDC,
 autorización por ámbito, gestión de secretos, retención auditada y observabilidad
 distribuida.

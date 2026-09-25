@@ -19,6 +19,11 @@ semántico.
   cohortes publicadas y registro físico aprovisionado.
 - Migración de esquema versión 2 con restricciones físicas y pruebas de recuperación
   del catálogo y de las garantías de orden/privacidad tras reiniciar instancias.
+- Outbox PostgreSQL transaccional para instrucciones PEBC y webhooks, con activaciones
+  pendientes, leasing recuperable, reintentos con backoff, reclamación concurrente mediante
+  `SKIP LOCKED` e identificadores estables de evento.
+- Worker independiente y pruebas reales de commit antes del efecto externo, reinicio,
+  rollback, lease caducado, rechazo definitivo y recuperación de fallos transitorios.
 
 ### Changed
 

@@ -221,7 +221,7 @@ def test_schema_version_two_is_recorded(
                 """
             ).fetchall()
         }
-    assert versions == [(1,), (2,)]
+    assert versions == [(1,), (2,), (3,)]
     assert {
         "der_flex_resource_power",
         "der_flex_resource_energy",
