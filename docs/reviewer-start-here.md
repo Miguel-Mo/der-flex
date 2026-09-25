@@ -1,4 +1,4 @@
-# DER Flex 0.2.0 — inicio de la revisión v5.0
+# DER Flex 0.2.0 — inicio de la revisión v6.0
 
 Este expediente está diseñado para revisarse sin acceder al sitio web del proyecto.
 No confíe inicialmente en `evidence.json`: verifique primero los bytes recibidos.

@@ -17,7 +17,7 @@ if __package__ in {None, ""}:
 
 from scripts.verify_release import DEFAULT_OUTPUT, ROOT, sha256
 
-IMAGE_TAG = "der-flex:pkg01-v5.0"
+IMAGE_TAG = "der-flex:pkg01-v6.0"
 
 
 def run(command: list[str], *, check: bool = True) -> str:
