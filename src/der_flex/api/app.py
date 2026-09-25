@@ -18,7 +18,7 @@ from der_flex.domain.models import (
     FlexibilityDirection,
     Reservation,
 )
-from der_flex.domain.store import InMemoryOfferStore
+from der_flex.domain.store import InMemoryOfferStore, OfferStore
 from der_flex.observability import (
     MetricsRegistry,
     RequestBodyLimitMiddleware,
@@ -75,7 +75,7 @@ class ReservationRequest(BaseModel):
 
 
 def create_app(
-    store: InMemoryOfferStore | None = None,
+    store: OfferStore | None = None,
     reservation_service: ReservationService | None = None,
 ) -> FastAPI:
     offer_store = store or InMemoryOfferStore()

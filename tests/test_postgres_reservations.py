@@ -123,7 +123,7 @@ def test_schema_records_migration_and_database_invariants(
             ).fetchall()
         }
 
-    assert versions == [(1,)]
+    assert (1,) in versions
     assert {
         "der_flex_reservation_power",
         "der_flex_reservation_status",

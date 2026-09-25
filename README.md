@@ -46,9 +46,10 @@ O bien, con un único comando:
 docker compose up --build
 ```
 
-Compose arranca PostgreSQL y configura la demo para persistir reservas, asignaciones,
-claves idempotentes, activaciones, instrucciones y el estado de supresión pública. El
-esquema se aplica de forma idempotente al iniciar y también puede aplicarse explícitamente:
+Compose arranca PostgreSQL y configura la demo para persistir el registro físico,
+ofertas normalizadas, posiciones de sesión, cohortes públicas, reservas, asignaciones,
+claves idempotentes, activaciones, instrucciones y el estado de supresión. El esquema
+se aplica de forma idempotente al iniciar y también puede aplicarse explícitamente:
 
 ```powershell
 $env:DER_FLEX_DATABASE_URL = "postgresql://der_flex:der_flex_local@localhost:5432/der_flex"
@@ -121,6 +122,7 @@ suprime el segundo intervalo adyacente si cambia la cohorte. Esto prioriza priva
 sobre frescura y no convierte el agregado en anónimo. Cuando se configura PostgreSQL,
 la atomicidad de reservas serializa decisiones de capacidad por producto con bloqueos
 transaccionales compartidos, por lo que varias instancias no pueden confirmar dos veces
-la misma capacidad. El almacén de ofertas y el registro físico aún viven en memoria;
-por tanto, esta rama todavía no ofrece recuperación completa del estado operativo ni
-está preparada para DER o datos reales.
+la misma capacidad. Ofertas, registro físico, reservas y estados de privacidad se
+recuperan después de reiniciar. Todavía faltan una outbox durable, autenticación,
+aislamiento multi-tenant y administración segura; por tanto, esta rama no está preparada
+para DER o datos reales.

@@ -8,7 +8,13 @@ from fastapi import FastAPI
 
 from der_flex.adapters.s2 import normalize_pebc_offer
 from der_flex.api import create_app
-from der_flex.domain import InMemoryOfferStore
+from der_flex.domain import (
+    InMemoryOfferStore,
+    OfferStore,
+    PostgresOfferStore,
+    PostgresResourceRegistry,
+    ResourceRegistry,
+)
 from der_flex.reservations import PostgresReservationBackend, ReservationService
 from der_flex.simulators import build_demo_fleet, build_simulator_registry
 
@@ -16,10 +22,29 @@ from der_flex.simulators import build_demo_fleet, build_simulator_registry
 def build_demo_app() -> FastAPI:
     now = datetime.now(UTC).replace(second=0, microsecond=0)
     start = now + timedelta(minutes=15 - now.minute % 15)
-    store = InMemoryOfferStore(minimum_participants=10)
     fleet = build_demo_fleet(per_profile_per_zone=12)
-    resource_registry = build_simulator_registry(fleet)
+    seed_registry = build_simulator_registry(fleet)
+    database_url = os.getenv("DER_FLEX_DATABASE_URL")
+    resource_registry: ResourceRegistry
+    store: OfferStore
+    if database_url:
+        backend = PostgresReservationBackend(database_url)
+        backend.initialize()
+        postgres_registry = PostgresResourceRegistry(database_url)
+        for resource in fleet:
+            postgres_registry.register(
+                seed_registry.require(resource.resource_id, resource.zone_id)
+            )
+        resource_registry = postgres_registry
+        store = PostgresOfferStore(database_url, minimum_participants=10)
+    else:
+        backend = None
+        resource_registry = seed_registry
+        store = InMemoryOfferStore(minimum_participants=10)
     for resource in fleet:
+        # The synthetic RM starts a new monotonic source session on each minute/boot.
+        # Re-imports within the same minute remain byte-for-byte idempotent.
+        resource.source_epoch = int(now.timestamp())
         constraints, forecast = resource.s2_offer_messages(start, interval_count=4)
         for offer in normalize_pebc_offer(
             resource_id=resource.resource_id,
@@ -33,10 +58,7 @@ def build_demo_app() -> FastAPI:
             received_at=now,
         ):
             store.upsert(offer)
-    database_url = os.getenv("DER_FLEX_DATABASE_URL")
-    if database_url:
-        backend = PostgresReservationBackend(database_url)
-        backend.initialize()
+    if backend:
         reservation_service = ReservationService(store, backend=backend)
     else:
         reservation_service = ReservationService(store)
