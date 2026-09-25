@@ -3,10 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-import threading
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
@@ -17,10 +15,14 @@ from der_flex.domain.models import (
     ConsequenceType,
     FlexibilityAggregate,
     FlexibilityDirection,
-    FlexibilityOffer,
     Reservation,
 )
 from der_flex.domain.store import InMemoryOfferStore
+from der_flex.reservations.backend import (
+    Allocation,
+    InMemoryReservationBackend,
+    ReservationBackend,
+)
 
 MAX_RESERVATION_POWER_KW = 1_000_000.0
 
@@ -45,51 +47,40 @@ class ReservationStateConflict(ReservationError):
     pass
 
 
-@dataclass(frozen=True)
-class Allocation:
-    resource_id: str
-    power_kw: float
-    baseline_power_kw: float
-    source_version: str
-
-
 class ReservationService:
     def __init__(
         self,
         offer_store: InMemoryOfferStore,
         *,
+        backend: ReservationBackend | None = None,
         webhook_dispatcher: WebhookDispatcher | None = None,
         resource_acceptor: Callable[[str, dict[str, object]], bool] | None = None,
     ) -> None:
         self.offer_store = offer_store
-        self._lock = threading.RLock()
-        self._reservations: dict[uuid.UUID, Reservation] = {}
-        self._allocations: dict[uuid.UUID, tuple[Allocation, ...]] = {}
-        self._idempotency: dict[str, tuple[str, uuid.UUID]] = {}
-        self._activations: dict[uuid.UUID, Activation] = {}
-        self._activation_by_reservation: dict[uuid.UUID, uuid.UUID] = {}
-        self._instructions: dict[uuid.UUID, tuple[dict[str, object], ...]] = {}
-        self._callbacks: dict[uuid.UUID, str] = {}
-        self._published_residuals: dict[
-            tuple[str, datetime, datetime, ConsequenceType], tuple[float, float, float, float]
-        ] = {}
-        self._suppressed_public_cells: set[
-            tuple[str, datetime, datetime, ConsequenceType]
-        ] = set()
+        self.backend = backend or InMemoryReservationBackend()
         self.webhook_dispatcher = webhook_dispatcher or WebhookDispatcher()
         self.resource_acceptor = resource_acceptor or (lambda _resource, _instruction: True)
+
+    def is_ready(self) -> bool:
+        return self.backend.is_ready()
+
+    @staticmethod
+    def _product_lock_key(
+        zone_id: str,
+        interval_start: datetime,
+        interval_end: datetime,
+        consequence_type: ConsequenceType,
+        direction: FlexibilityDirection,
+    ) -> str:
+        return (
+            f"product:{zone_id}:{interval_start.isoformat()}:{interval_end.isoformat()}:"
+            f"{consequence_type}:{direction}"
+        )
 
     @staticmethod
     def _fingerprint(payload: dict[str, object]) -> str:
         encoded = json.dumps(payload, sort_keys=True, default=str, separators=(",", ":"))
         return hashlib.sha256(encoded.encode()).hexdigest()
-
-    def _expire(self, now: datetime) -> None:
-        for reservation_id, reservation in tuple(self._reservations.items()):
-            if reservation.status == "CONFIRMED" and reservation.expires_at <= now:
-                self._reservations[reservation_id] = reservation.model_copy(
-                    update={"status": "EXPIRED"}
-                )
 
     def create(
         self,
@@ -123,14 +114,26 @@ class ReservationService:
         }
         fingerprint = self._fingerprint(payload)
 
-        with self._lock:
-            self._expire(current)
-            previous = self._idempotency.get(idempotency_key)
+        product_key = self._product_lock_key(
+            zone_id,
+            interval_start,
+            interval_end,
+            consequence_type,
+            direction,
+        )
+        with self.backend.transaction(
+            (product_key, f"idempotency:{idempotency_key}")
+        ) as state:
+            state.expire(current)
+            previous = state.get_idempotency(idempotency_key)
             if previous:
                 previous_fingerprint, reservation_id = previous
                 if previous_fingerprint != fingerprint:
                     raise IdempotencyConflict("idempotency key was used with a different request")
-                return self._reservations[reservation_id]
+                reservation = state.get_reservation(reservation_id)
+                if reservation is None:
+                    raise ReservationNotFound(str(reservation_id))
+                return reservation
 
             offers = self.offer_store.eligible_offers(
                 zone_id=zone_id,
@@ -145,7 +148,7 @@ class ReservationService:
             allocations: list[Allocation] = []
             remaining = power_kw
             for offer in offers:
-                already_reserved = self._reserved_for_offer(offer, direction)
+                already_reserved = state.reserved_for_offer(offer, direction)
                 capacity = (
                     offer.upward_capacity_kw
                     if direction == "UPWARD"
@@ -184,66 +187,53 @@ class ReservationService:
                 created_at=current,
                 expires_at=min(interval_start, current + timedelta(minutes=5)),
             )
-            self._reservations[reservation_id] = reservation
-            self._allocations[reservation_id] = tuple(allocations)
-            self._idempotency[idempotency_key] = (fingerprint, reservation_id)
-            if callback_url:
-                self._callbacks[reservation_id] = callback_url
+            state.save_reservation(
+                reservation,
+                tuple(allocations),
+                idempotency_key=idempotency_key,
+                fingerprint=fingerprint,
+                callback_url=callback_url,
+            )
             return reservation
 
-    def _reserved_for_offer(
-        self, offer: FlexibilityOffer, direction: FlexibilityDirection
-    ) -> float:
-        total = 0.0
-        for reservation_id, reservation in self._reservations.items():
-            if reservation.status not in {"CONFIRMED", "ACTIVATED", "COMPLETED", "FAILED"}:
-                continue
-            if (
-                reservation.zone_id == offer.zone_id
-                and reservation.interval_start == offer.interval_start
-                and reservation.interval_end == offer.interval_end
-                and reservation.direction == direction
-                and reservation.consequence_type == offer.consequence_type
-            ):
-                total += sum(
-                    item.power_kw
-                    for item in self._allocations[reservation_id]
-                    if item.resource_id == offer.resource_id
-                )
-        return total
-
     def get(self, reservation_id: uuid.UUID, *, now: datetime | None = None) -> Reservation:
-        with self._lock:
-            self._expire(now or datetime.now(UTC))
-            try:
-                return self._reservations[reservation_id]
-            except KeyError as error:
-                raise ReservationNotFound(str(reservation_id)) from error
+        with self.backend.transaction((f"reservation:{reservation_id}",)) as state:
+            state.expire(now or datetime.now(UTC))
+            reservation = state.get_reservation(reservation_id)
+            if reservation is None:
+                raise ReservationNotFound(str(reservation_id))
+            return reservation
 
     def cancel(self, reservation_id: uuid.UUID) -> Reservation:
-        with self._lock:
-            reservation = self.get(reservation_id)
+        with self.backend.transaction((f"reservation:{reservation_id}",)) as state:
+            state.expire(datetime.now(UTC))
+            reservation = state.get_reservation(reservation_id)
+            if reservation is None:
+                raise ReservationNotFound(str(reservation_id))
             if reservation.status != "CONFIRMED":
                 raise ReservationStateConflict(f"cannot cancel {reservation.status}")
             cancelled = reservation.model_copy(update={"status": "CANCELLED"})
-            self._reservations[reservation_id] = cancelled
+            state.update_reservation(cancelled)
             return cancelled
 
     def activate(self, reservation_id: uuid.UUID) -> Activation:
-        with self._lock:
-            existing_id = self._activation_by_reservation.get(reservation_id)
-            if existing_id:
-                return self._activations[existing_id]
-            reservation = self.get(reservation_id)
+        with self.backend.transaction((f"reservation:{reservation_id}",)) as state:
+            existing = state.activation_for_reservation(reservation_id)
+            if existing:
+                return existing
+            state.expire(datetime.now(UTC))
+            reservation = state.get_reservation(reservation_id)
+            if reservation is None:
+                raise ReservationNotFound(str(reservation_id))
             if reservation.status != "CONFIRMED":
                 raise ReservationStateConflict(f"cannot activate {reservation.status}")
-            callback_url = self._callbacks.get(reservation_id)
+            callback_url = state.callback_url(reservation_id)
             if callback_url:
                 self._notify(callback_url, "activation.accepted", reservation)
                 self._notify(callback_url, "activation.started", reservation)
             instruction_pairs = tuple(
                 (item, build_pebc_instruction(allocation=item, reservation=reservation))
-                for item in self._allocations[reservation_id]
+                for item in state.get_allocations(reservation_id)
             )
             accepted_pairs = tuple(
                 pair
@@ -255,7 +245,6 @@ class ReservationService:
                 "FAILED" if rejected_count else "COMPLETED"
             )
             instructions = tuple(pair[1] for pair in instruction_pairs)
-            self._allocations[reservation_id] = tuple(pair[0] for pair in accepted_pairs)
             now = datetime.now(UTC)
             activation = Activation(
                 activation_id=uuid.uuid4(),
@@ -268,14 +257,17 @@ class ReservationService:
                 created_at=now,
                 completed_at=now,
             )
-            self._instructions[activation.activation_id] = instructions
-            self._activations[activation.activation_id] = activation
-            self._activation_by_reservation[reservation_id] = activation.activation_id
-            self._reservations[reservation_id] = reservation.model_copy(
+            updated_reservation = reservation.model_copy(
                 update={
                     "status": result_status,
                     "allocated_power_kw": sum(pair[0].power_kw for pair in accepted_pairs),
                 }
+            )
+            state.save_activation(
+                activation,
+                updated_reservation,
+                tuple(pair[0] for pair in accepted_pairs),
+                instructions,
             )
             if callback_url:
                 event = "activation.failed" if rejected_count else "activation.completed"
@@ -286,69 +278,82 @@ class ReservationService:
         self.webhook_dispatcher.deliver(callback_url, event, payload.model_dump(mode="json"))
 
     def get_activation(self, activation_id: uuid.UUID) -> Activation:
-        try:
-            return self._activations[activation_id]
-        except KeyError as error:
-            raise ReservationNotFound(str(activation_id)) from error
+        with self.backend.transaction() as state:
+            activation = state.get_activation(activation_id)
+            if activation is None:
+                raise ReservationNotFound(str(activation_id))
+            return activation
 
     def instructions_for(self, activation_id: uuid.UUID) -> tuple[dict[str, object], ...]:
-        return self._instructions[activation_id]
+        with self.backend.transaction() as state:
+            return state.instructions_for(activation_id)
 
     def apply_residual_capacity(
         self, aggregates: list[FlexibilityAggregate]
     ) -> list[FlexibilityAggregate]:
-        with self._lock:
-            self._expire(datetime.now(UTC))
-            adjusted: list[FlexibilityAggregate] = []
-            for aggregate in aggregates:
-                upward = 0.0
-                downward = 0.0
-                for reservation in self._reservations.values():
-                    if reservation.status not in {
-                        "CONFIRMED",
-                        "ACTIVATED",
-                        "COMPLETED",
-                        "FAILED",
-                    }:
-                        continue
-                    same_product = (
-                        reservation.zone_id == aggregate.zone_id
-                        and reservation.interval_start == aggregate.interval_start
-                        and reservation.interval_end == aggregate.interval_end
-                        and reservation.consequence_type == aggregate.consequence_type
-                    )
-                    if same_product and reservation.direction == "UPWARD":
-                        upward += reservation.allocated_power_kw
-                    elif same_product:
-                        downward += reservation.allocated_power_kw
-                hours = (aggregate.interval_end - aggregate.interval_start).total_seconds() / 3600
-                adjusted.append(
-                    aggregate.model_copy(
-                        update={
-                            "upward_capacity_kw": round(
-                                max(0.0, aggregate.upward_capacity_kw - upward), 6
-                            ),
-                            "downward_capacity_kw": round(
-                                max(0.0, aggregate.downward_capacity_kw - downward), 6
-                            ),
-                            "upward_energy_kwh": round(
-                                max(0.0, aggregate.upward_energy_kwh - upward * hours), 6
-                            ),
-                            "downward_energy_kwh": round(
-                                max(0.0, aggregate.downward_energy_kwh - downward * hours), 6
-                            ),
-                        }
-                    )
+        with self.backend.transaction() as state:
+            state.expire(datetime.now(UTC))
+            return self._apply_residual_capacity(aggregates, state.active_reservations())
+
+    @staticmethod
+    def _apply_residual_capacity(
+        aggregates: list[FlexibilityAggregate], reservations: tuple[Reservation, ...]
+    ) -> list[FlexibilityAggregate]:
+        adjusted: list[FlexibilityAggregate] = []
+        for aggregate in aggregates:
+            upward = 0.0
+            downward = 0.0
+            for reservation in reservations:
+                same_product = (
+                    reservation.zone_id == aggregate.zone_id
+                    and reservation.interval_start == aggregate.interval_start
+                    and reservation.interval_end == aggregate.interval_end
+                    and reservation.consequence_type == aggregate.consequence_type
                 )
-            return adjusted
+                if same_product and reservation.direction == "UPWARD":
+                    upward += reservation.allocated_power_kw
+                elif same_product:
+                    downward += reservation.allocated_power_kw
+            hours = (aggregate.interval_end - aggregate.interval_start).total_seconds() / 3600
+            adjusted.append(
+                aggregate.model_copy(
+                    update={
+                        "upward_capacity_kw": round(
+                            max(0.0, aggregate.upward_capacity_kw - upward), 6
+                        ),
+                        "downward_capacity_kw": round(
+                            max(0.0, aggregate.downward_capacity_kw - downward), 6
+                        ),
+                        "upward_energy_kwh": round(
+                            max(0.0, aggregate.upward_energy_kwh - upward * hours), 6
+                        ),
+                        "downward_energy_kwh": round(
+                            max(0.0, aggregate.downward_energy_kwh - downward * hours), 6
+                        ),
+                    }
+                )
+            )
+        return adjusted
 
     def public_residual_capacity(
         self, aggregates: list[FlexibilityAggregate]
     ) -> list[FlexibilityAggregate]:
         """Publish a stable residual cell or suppress it after reservation changes."""
 
-        with self._lock:
-            adjusted = self.apply_residual_capacity(aggregates)
+        lock_keys = tuple(
+            self._product_lock_key(
+                item.zone_id,
+                item.interval_start,
+                item.interval_end,
+                item.consequence_type,
+                direction,
+            )
+            for item in aggregates
+            for direction in ("UPWARD", "DOWNWARD")
+        )
+        with self.backend.transaction(lock_keys) as state:
+            state.expire(datetime.now(UTC))
+            adjusted = self._apply_residual_capacity(aggregates, state.active_reservations())
             published: list[FlexibilityAggregate] = []
             for aggregate in adjusted:
                 cell = (
@@ -363,11 +368,11 @@ class ReservationService:
                     aggregate.upward_energy_kwh,
                     aggregate.downward_energy_kwh,
                 )
-                previous = self._published_residuals.get(cell)
+                previous = state.published_residual(cell)
                 if previous is not None and previous != residual:
-                    self._suppressed_public_cells.add(cell)
-                if cell in self._suppressed_public_cells:
+                    state.suppress_public_cell(cell)
+                if state.public_cell_is_suppressed(cell):
                     continue
-                self._published_residuals[cell] = residual
+                state.set_published_residual(cell, residual)
                 published.append(aggregate)
             return published

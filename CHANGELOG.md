@@ -3,6 +3,24 @@
 Los cambios notables se documentan aquí siguiendo Keep a Changelog y versionado
 semántico.
 
+## [Unreleased]
+
+### Added
+
+- Backend PostgreSQL opcional para reservas, asignaciones, idempotencia, activaciones,
+  instrucciones y estado de supresión pública.
+- Bloqueos asesores de transacción por producto y clave idempotente, con pruebas de
+  carrera entre instancias independientes para impedir doble venta multiproceso.
+- Migración idempotente de esquema, readiness conectado a la base de datos, servicio
+  PostgreSQL en Compose y cobertura de integración en CI.
+- Pruebas de recuperación que reproducen idempotencia, cancelación, activación,
+  caducidad y supresión de privacidad después de crear un nuevo servicio.
+
+### Changed
+
+- El backend en memoria implementa la misma unidad de trabajo y queda como alternativa
+  explícita para tests y ejecución sin `DER_FLEX_DATABASE_URL`.
+
 ## [0.1.0] - 2026-09-25
 
 ### Added

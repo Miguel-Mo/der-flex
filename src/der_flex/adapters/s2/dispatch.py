@@ -10,7 +10,7 @@ from s2python.s2_parser import S2Parser
 from der_flex.domain.models import Reservation
 
 if TYPE_CHECKING:
-    from der_flex.reservations.service import Allocation
+    from der_flex.reservations.backend import Allocation
 
 
 def build_pebc_instruction(

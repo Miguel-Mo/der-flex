@@ -9,7 +9,7 @@ registro físico ─────────┐
 RM simulados ──S2/PEBC──┘                         │
                                                  ├──> agregación + privacidad ──> REST
                                                  │
-                                                 └──> reservas ──> activación PEBC
+                                                 └──> ledger PostgreSQL ──> activación PEBC
                                                                      │
 OpenADR evento ──> adaptador ────────────────────────────────────────┤
 OpenADR reporte <────────────────────────── resultado agregado <─────┘
@@ -20,7 +20,8 @@ OpenADR reporte <─────────────────────
 - `domain`: modelos internos, registro físico y almacenamiento en memoria.
 - `aggregation`: materializada actualmente en las consultas del almacén; suma capacidad,
   energía y confianza por zona, intervalo y consecuencia.
-- `reservations`: asignación determinista, idempotencia y máquina de estados.
+- `reservations`: asignación determinista, idempotencia y máquina de estados; puede usar
+  memoria o un ledger PostgreSQL compartido.
 - `adapters/s2`: validación, normalización y generación de instrucciones PEBC.
 - `adapters/openadr`: traducción opcional entre eventos, activaciones y reportes.
 - `api`: contrato REST; solo usa modelos agregados en las respuestas públicas.
@@ -41,7 +42,9 @@ OpenADR reporte <─────────────────────
 
 ## Sustituciones previstas
 
-`InMemoryOfferStore` delimita la futura persistencia. Un piloto debería añadir una base
-de datos transaccional, cola duradera, OAuth2/OIDC, autorización por ámbito, gestión de
-secretos, protección SSRF, retención auditada y observabilidad distribuida sin cambiar
-la semántica del dominio público.
+`InMemoryOfferStore` sigue delimitando la futura persistencia de ofertas. El ledger
+PostgreSQL ya conserva reservas, asignaciones, idempotencia, activaciones, instrucciones
+y supresión pública. Sus bloqueos asesores transaccionales serializan una decisión por
+producto y clave idempotente entre procesos. Todavía faltan ofertas y registro físico
+durables, cola/outbox, OAuth2/OIDC, autorización por ámbito, gestión de secretos,
+retención auditada y observabilidad distribuida.

@@ -154,7 +154,7 @@
     },
     {
       "id": "OFF01",
-      "claim": "El wheel y sus 15 dependencias se instalan sin índice en una venv nueva con hashes obligatorios.",
+      "claim": "El wheel y sus 18 dependencias se instalan sin índice en una venv nueva con hashes obligatorios.",
       "status": "PASS_WITH_SCOPE_LIMIT",
       "implementation_paths": ["requirements-runtime.lock", "vendor/wheelhouse/fastapi-0.141.1-py3-none-any.whl", "scripts/verify_release.py"],
       "test_nodes": ["tests/test_release_verification.py::test_wheelhouse_matches_runtime_lock_and_supported_platforms", "tests/test_release_verification.py::test_wheelhouse_rejects_a_tampered_lock"],

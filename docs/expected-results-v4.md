@@ -11,8 +11,8 @@ su entorno lo permita.
 - fuzzing: 1.205 entradas deterministas por ejecución.
 - mutación dirigida: 6/6 mutantes eliminados, 100 %.
 - trazabilidad: 17 claims y 77 referencias válidas.
-- SBOM: 15 componentes transitivos y 22 relaciones.
-- wheelhouse: 17 wheels, 15 componentes, hashes coincidentes.
+- SBOM: 18 componentes transitivos y 25 relaciones.
+- wheelhouse: 21 wheels, 18 componentes, hashes coincidentes.
 - instalación offline: `pip check` limpio, versión 0.1.0 y 14 rutas.
 - wheel y sdist: dos construcciones idénticas; wheel reconstruido desde sdist idéntico.
 - texto —incluidos `PKG-INFO` y `.cfg`—, `METADATA`, `RECORD`, timestamps, orden,

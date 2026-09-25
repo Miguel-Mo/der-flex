@@ -141,6 +141,8 @@ def create_app(
 
     @app.get("/health/ready")
     def health_ready() -> dict[str, str]:
+        if not reservations.is_ready():
+            raise HTTPException(status_code=503, detail="reservation backend is unavailable")
         return {"status": "ready"}
 
     @app.get("/metrics", include_in_schema=False)
