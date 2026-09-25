@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import UTC, datetime
 from threading import RLock
+from typing import Protocol
 
 from der_flex.domain.models import ConsequenceType, FlexibilityAggregate, FlexibilityOffer
 
@@ -13,6 +14,35 @@ class StaleOfferError(ValueError):
 
 class OfferVersionConflict(ValueError):
     """The same source sequence was reused with different offer content."""
+
+
+class OfferStore(Protocol):
+    minimum_participants: int
+
+    def upsert(self, offer: FlexibilityOffer) -> None: ...
+
+    def remove_resource(self, resource_id: str) -> int: ...
+
+    def zones(self, *, now: datetime | None = None) -> list[str]: ...
+
+    def eligible_offers(
+        self,
+        *,
+        zone_id: str,
+        interval_start: datetime,
+        interval_end: datetime,
+        consequence_type: ConsequenceType,
+        now: datetime | None = None,
+    ) -> list[FlexibilityOffer]: ...
+
+    def query(
+        self,
+        zone_id: str,
+        start: datetime,
+        end: datetime,
+        *,
+        now: datetime | None = None,
+    ) -> list[FlexibilityAggregate]: ...
 
 
 class InMemoryOfferStore:

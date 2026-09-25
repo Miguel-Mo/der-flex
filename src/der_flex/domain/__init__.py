@@ -1,6 +1,7 @@
 """Protocol-independent domain model."""
 
 from der_flex.domain.models import Activation, FlexibilityAggregate, FlexibilityOffer, Reservation
+from der_flex.domain.postgres import PostgresOfferStore, PostgresResourceRegistry
 from der_flex.domain.resources import (
     DisabledResourceError,
     InMemoryResourceRegistry,
@@ -12,7 +13,12 @@ from der_flex.domain.resources import (
     StaleProvisioningRecord,
     UnknownResourceError,
 )
-from der_flex.domain.store import InMemoryOfferStore, OfferVersionConflict, StaleOfferError
+from der_flex.domain.store import (
+    InMemoryOfferStore,
+    OfferStore,
+    OfferVersionConflict,
+    StaleOfferError,
+)
 
 __all__ = [
     "Activation",
@@ -22,6 +28,9 @@ __all__ = [
     "InMemoryOfferStore",
     "InMemoryResourceRegistry",
     "OfferVersionConflict",
+    "OfferStore",
+    "PostgresOfferStore",
+    "PostgresResourceRegistry",
     "ProvisionedResource",
     "Reservation",
     "ResourceProvisioningConflict",

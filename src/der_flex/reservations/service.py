@@ -17,7 +17,8 @@ from der_flex.domain.models import (
     FlexibilityDirection,
     Reservation,
 )
-from der_flex.domain.store import InMemoryOfferStore
+from der_flex.domain.store import OfferStore
+from der_flex.locking import product_lock_key
 from der_flex.reservations.backend import (
     Allocation,
     InMemoryReservationBackend,
@@ -50,7 +51,7 @@ class ReservationStateConflict(ReservationError):
 class ReservationService:
     def __init__(
         self,
-        offer_store: InMemoryOfferStore,
+        offer_store: OfferStore,
         *,
         backend: ReservationBackend | None = None,
         webhook_dispatcher: WebhookDispatcher | None = None,
@@ -63,19 +64,6 @@ class ReservationService:
 
     def is_ready(self) -> bool:
         return self.backend.is_ready()
-
-    @staticmethod
-    def _product_lock_key(
-        zone_id: str,
-        interval_start: datetime,
-        interval_end: datetime,
-        consequence_type: ConsequenceType,
-        direction: FlexibilityDirection,
-    ) -> str:
-        return (
-            f"product:{zone_id}:{interval_start.isoformat()}:{interval_end.isoformat()}:"
-            f"{consequence_type}:{direction}"
-        )
 
     @staticmethod
     def _fingerprint(payload: dict[str, object]) -> str:
@@ -114,7 +102,7 @@ class ReservationService:
         }
         fingerprint = self._fingerprint(payload)
 
-        product_key = self._product_lock_key(
+        product_key = product_lock_key(
             zone_id,
             interval_start,
             interval_end,
@@ -341,7 +329,7 @@ class ReservationService:
         """Publish a stable residual cell or suppress it after reservation changes."""
 
         lock_keys = tuple(
-            self._product_lock_key(
+            product_lock_key(
                 item.zone_id,
                 item.interval_start,
                 item.interval_end,

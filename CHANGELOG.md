@@ -15,6 +15,10 @@ semántico.
   PostgreSQL en Compose y cobertura de integración en CI.
 - Pruebas de recuperación que reproducen idempotencia, cancelación, activación,
   caducidad y supresión de privacidad después de crear un nuevo servicio.
+- Persistencia PostgreSQL de ofertas normalizadas, posiciones de sesión, desconexiones,
+  cohortes publicadas y registro físico aprovisionado.
+- Migración de esquema versión 2 con restricciones físicas y pruebas de recuperación
+  del catálogo y de las garantías de orden/privacidad tras reiniciar instancias.
 
 ### Changed
 

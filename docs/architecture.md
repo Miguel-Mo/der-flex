@@ -17,7 +17,7 @@ OpenADR reporte <─────────────────────
 
 ## Límites de módulos
 
-- `domain`: modelos internos, registro físico y almacenamiento en memoria.
+- `domain`: modelos internos, registro físico y almacenes en memoria/PostgreSQL.
 - `aggregation`: materializada actualmente en las consultas del almacén; suma capacidad,
   energía y confianza por zona, intervalo y consecuencia.
 - `reservations`: asignación determinista, idempotencia y máquina de estados; puede usar
@@ -42,9 +42,11 @@ OpenADR reporte <─────────────────────
 
 ## Sustituciones previstas
 
-`InMemoryOfferStore` sigue delimitando la futura persistencia de ofertas. El ledger
-PostgreSQL ya conserva reservas, asignaciones, idempotencia, activaciones, instrucciones
-y supresión pública. Sus bloqueos asesores transaccionales serializan una decisión por
-producto y clave idempotente entre procesos. Todavía faltan ofertas y registro físico
-durables, cola/outbox, OAuth2/OIDC, autorización por ámbito, gestión de secretos,
-retención auditada y observabilidad distribuida.
+Las interfaces `OfferStore`, `ResourceRegistry` y `ReservationBackend` conservan una
+implementación en memoria para tests y una implementación PostgreSQL para ejecución
+durable. PostgreSQL conserva registro físico, posiciones de fuente, ofertas, cohortes,
+reservas, asignaciones, idempotencia, activaciones, instrucciones y supresión pública.
+Los bloqueos asesores transaccionales coordinan actualizaciones de oferta y decisiones
+de reserva sobre el mismo producto. Todavía faltan cola/outbox, OAuth2/OIDC,
+autorización por ámbito, gestión de secretos, retención auditada y observabilidad
+distribuida.
