@@ -1,6 +1,25 @@
 services:
+  postgres:
+    image: postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+    environment:
+      POSTGRES_DB: der_flex
+      POSTGRES_USER: der_flex
+      POSTGRES_PASSWORD: der_flex_local
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U der_flex -d der_flex"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
   der-flex:
     build: .
+    environment:
+      DER_FLEX_DATABASE_URL: postgresql://der_flex:der_flex_local@postgres:5432/der_flex
+    depends_on:
+      postgres:
+        condition: service_healthy
     read_only: true
     cap_drop:
       - ALL
@@ -16,3 +35,6 @@ services:
       timeout: 3s
       retries: 5
       start_period: 5s
+
+volumes:
+  postgres-data:

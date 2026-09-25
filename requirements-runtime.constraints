@@ -9,9 +9,12 @@ h11==0.16.0
 idna==3.19
 pydantic==2.13.5
 pydantic-core==2.46.5
+psycopg==3.3.6
+psycopg-binary==3.3.6
 s2-python==0.9.1
 starlette==1.6.0
 typing-extensions==4.16.0
 typing-inspection==0.4.4
+tzdata==2026.4
 uvicorn==0.52.4
 websockets==13.1

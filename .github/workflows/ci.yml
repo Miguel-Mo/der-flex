@@ -10,6 +10,22 @@ permissions:
 jobs:
   quality:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+        env:
+          POSTGRES_DB: der_flex
+          POSTGRES_USER: der_flex
+          POSTGRES_PASSWORD: der_flex_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U der_flex -d der_flex"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DER_FLEX_TEST_DATABASE_URL: postgresql://der_flex:der_flex_test@localhost:5432/der_flex
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

@@ -596,7 +596,7 @@ def wheelhouse_inventory(
     if locked_versions != expected_versions:
         raise RuntimeError("runtime lock does not match the installed production closure")
     filenames = [path.name for path in wheels]
-    for distribution_name in ("pydantic_core", "websockets"):
+    for distribution_name in ("pydantic_core", "psycopg_binary", "websockets"):
         matching = [name for name in filenames if name.startswith(f"{distribution_name}-")]
         if not any("win_amd64" in name for name in matching) or not any(
             "manylinux" in name for name in matching

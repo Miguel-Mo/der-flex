@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime, timedelta
 
 import uvicorn
@@ -8,6 +9,7 @@ from fastapi import FastAPI
 from der_flex.adapters.s2 import normalize_pebc_offer
 from der_flex.api import create_app
 from der_flex.domain import InMemoryOfferStore
+from der_flex.reservations import PostgresReservationBackend, ReservationService
 from der_flex.simulators import build_demo_fleet, build_simulator_registry
 
 
@@ -31,7 +33,14 @@ def build_demo_app() -> FastAPI:
             received_at=now,
         ):
             store.upsert(offer)
-    app = create_app(store)
+    database_url = os.getenv("DER_FLEX_DATABASE_URL")
+    if database_url:
+        backend = PostgresReservationBackend(database_url)
+        backend.initialize()
+        reservation_service = ReservationService(store, backend=backend)
+    else:
+        reservation_service = ReservationService(store)
+    app = create_app(store, reservation_service)
     app.state.demo_interval = (start, start + timedelta(hours=1))
     return app
 

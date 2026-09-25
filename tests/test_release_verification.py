@@ -221,8 +221,8 @@ def test_sdist_content_check_rejects_incomplete_archive(tmp_path: Path) -> None:
 def test_wheelhouse_matches_runtime_lock_and_supported_platforms() -> None:
     inventory = wheelhouse_inventory()
 
-    assert inventory["wheel_count"] == 17
-    assert inventory["locked_component_count"] == 15
+    assert inventory["wheel_count"] == 21
+    assert inventory["locked_component_count"] == 18
     assert inventory["hashes_match_lock"] is True
     assert inventory["platforms"] == ["cp313-win_amd64", "cp313-manylinux-x86_64"]
 

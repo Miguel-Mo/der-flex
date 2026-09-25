@@ -21,7 +21,7 @@ estados, evidencias y la presencia de los diez claims originales.
 | PHY01 | PASS acotado | Intersección con envolvente aprovisionada | Registro aún local |
 | FZ01 | PASS | 1.205 entradas adversarias reproducibles | Campaña finita |
 | MT01 | PASS acotado | 6/6 mutantes críticos eliminados | Catálogo dirigido, no exhaustivo |
-| SBOM01 | PASS | 15 componentes y grafo transitivo | Hash de metadato, no de wheel upstream |
+| SBOM01 | PASS | 18 componentes y grafo transitivo | Hash de metadato, no de wheel upstream |
 | OFF01 | PASS acotado | Instalación offline con hashes en venv nueva | CPython 3.13, Windows/Linux x86-64 |
 | BND01 | PASS acotado | Bundle y procedencia offline verificables | Sin firma de autoría; dev offline no vendorizado |
 

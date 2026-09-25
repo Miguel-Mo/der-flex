@@ -1,6 +1,8 @@
 # DER Flex
 
-API abierta de agregación de flexibilidad para recursos energéticos distribuidos. Los hitos 0 a 5 están completados; el siguiente incremento es preparar la publicación `v0.1.0`.
+API abierta de agregación de flexibilidad para recursos energéticos distribuidos.
+`v0.1.0` es la primera publicación experimental; la rama de desarrollo de `v0.2.0`
+añade un ledger PostgreSQL durable para reservas y activaciones.
 
 ## Estado ejecutable
 
@@ -44,6 +46,20 @@ O bien, con un único comando:
 docker compose up --build
 ```
 
+Compose arranca PostgreSQL y configura la demo para persistir reservas, asignaciones,
+claves idempotentes, activaciones, instrucciones y el estado de supresión pública. El
+esquema se aplica de forma idempotente al iniciar y también puede aplicarse explícitamente:
+
+```powershell
+$env:DER_FLEX_DATABASE_URL = "postgresql://der_flex:der_flex_local@localhost:5432/der_flex"
+.\.venv\Scripts\python.exe scripts\migrate_postgres.py
+```
+
+Sin `DER_FLEX_DATABASE_URL`, la demo conserva el backend en memoria para desarrollo y
+pruebas unitarias. El arranque falla de forma explícita si no puede aplicar el esquema;
+una instancia ya arrancada devuelve `503` en `/health/ready` si PostgreSQL deja de estar
+disponible.
+
 La ejecución correcta termina con `S2 PEBC smoke session completed: 16 validated wire messages`.
 La demo muestra el intervalo UTC cargado al arrancar y publica Swagger UI en http://127.0.0.1:8000/docs.
 La verificación de release escribe artefactos y evidencia bajo
@@ -60,7 +76,7 @@ las relaciones entre ellas y registra PURLs y hashes SHA-256 del metadato instal
 Los extras de desarrollo quedan fuera; el extra `ws` solicitado a S2 sí se incluye.
 La misma puerta ejecuta seis mutaciones dirigidas sobre controles críticos y exige que
 las pruebas maten todas antes de declarar el release local como válido.
-También crea una venv vacía e instala, con red deshabilitada para pip, el wheel y las 15
+También crea una venv vacía e instala, con red deshabilitada para pip, el wheel y las 18
 dependencias desde `vendor/wheelhouse` usando los hashes de `requirements-runtime.lock`.
 El wheelhouse cubre CPython 3.13 en Windows AMD64 y Linux x86-64.
 La instalación editable usa `requirements-runtime.constraints` para conservar ese mismo
@@ -102,5 +118,9 @@ No es una implementación completa de S2 Connect ni una certificación S2. Toda 
 Para dificultar ataques por diferencia, una celda ya publicada se suprime si cambia su
 cohorte, una oferta individual o su capacidad residual tras una reserva. También se
 suprime el segundo intervalo adyacente si cambia la cohorte. Esto prioriza privacidad
-sobre frescura y no convierte el agregado en anónimo. La atomicidad de reservas se
-limita a un único proceso; varias réplicas requieren persistencia transaccional.
+sobre frescura y no convierte el agregado en anónimo. Cuando se configura PostgreSQL,
+la atomicidad de reservas serializa decisiones de capacidad por producto con bloqueos
+transaccionales compartidos, por lo que varias instancias no pueden confirmar dos veces
+la misma capacidad. El almacén de ofertas y el registro físico aún viven en memoria;
+por tanto, esta rama todavía no ofrece recuperación completa del estado operativo ni
+está preparada para DER o datos reales.
