@@ -33,7 +33,7 @@ def test_demo_runs_108_resources_for_one_simulated_hour_without_identifier_leak(
 def test_demo_limits_request_bodies_and_exposes_anonymous_metrics() -> None:
     with TestClient(app) as client:
         openapi = client.get("/openapi.json")
-        assert openapi.json()["info"]["version"] == "0.1.0"
+        assert openapi.json()["info"]["version"] == "0.2.0"
 
         health = client.get("/health/ready")
         assert health.headers["x-request-id"]

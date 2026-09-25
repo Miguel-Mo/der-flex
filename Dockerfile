@@ -22,7 +22,7 @@ COPY --from=builder /project-wheel /tmp/install/project-wheel
 RUN python -m pip install --no-cache-dir --no-index --no-deps --require-hashes \
         --find-links /tmp/install/wheelhouse -r /tmp/install/requirements-runtime.lock \
     && python -m pip install --no-cache-dir --no-index --no-deps \
-        /tmp/install/project-wheel/der_flex-0.1.0-py3-none-any.whl \
+        /tmp/install/project-wheel/der_flex-0.2.0-py3-none-any.whl \
     && python -m pip check \
     && rm -rf /tmp/install
 

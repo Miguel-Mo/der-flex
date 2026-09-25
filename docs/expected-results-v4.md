@@ -14,7 +14,7 @@ su entorno lo permita.
 - trazabilidad: 18 claims y 91 referencias válidas.
 - SBOM: 18 componentes transitivos y 25 relaciones.
 - wheelhouse: 21 wheels, 18 componentes, hashes coincidentes.
-- instalación offline: `pip check` limpio, versión 0.1.0 y 14 rutas.
+- instalación offline: `pip check` limpio, versión 0.2.0 y 14 rutas.
 - wheel y sdist: dos construcciones idénticas; wheel reconstruido desde sdist idéntico.
 - texto —incluidos `PKG-INFO` y `.cfg`—, `METADATA`, `RECORD`, timestamps, orden,
   permisos y `ZipInfo.create_system` normalizados; las pruebas enfrentan
@@ -24,7 +24,7 @@ su entorno lo permita.
   almacenados emitidos de forma determinista, sin depender del resultado de zlib.
 - `security-audit.json`: fecha UTC, versión de `pip-audit`, servicio consultado, hash
   del lock y resultado. El hash de la base remota queda explícitamente como no disponible.
-- `container-report.json`: imagen Linux AMD64, DER Flex 0.1.0 importado desde
+- `container-report.json`: imagen Linux AMD64, DER Flex 0.2.0 importado desde
   `site-packages`, UID 10001, raíz de solo lectura, capacidades eliminadas,
   `no-new-privileges`, base Python fijada por digest, readiness aprobada y `pip check` limpio.
 - `offline-provenance.json`: artefactos, imagen y materiales enlazados por contenido;

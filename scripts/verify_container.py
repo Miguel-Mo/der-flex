@@ -17,7 +17,7 @@ if __package__ in {None, ""}:
 
 from scripts.verify_release import DEFAULT_OUTPUT, ROOT, sha256
 
-IMAGE_TAG = "der-flex:pkg01-v4.7"
+IMAGE_TAG = "der-flex:pkg01-v5.0"
 
 
 def run(command: list[str], *, check: bool = True) -> str:
@@ -37,7 +37,7 @@ def run(command: list[str], *, check: bool = True) -> str:
 
 
 def validate_probe(probe: dict[str, Any], pip_check: str) -> None:
-    if probe.get("version") != "0.1.0":
+    if probe.get("version") != "0.2.0":
         raise RuntimeError("container installed an unexpected DER Flex version")
     location = str(probe.get("location", "")).replace("\\", "/")
     if "/site-packages/der_flex/__init__.py" not in location:

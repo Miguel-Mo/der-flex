@@ -1,4 +1,4 @@
-# DER Flex 0.1.0 — inicio de la revisión v4.7
+# DER Flex 0.2.0 — inicio de la revisión v5.0
 
 Este expediente está diseñado para revisarse sin acceder al sitio web del proyecto.
 No confíe inicialmente en `evidence.json`: verifique primero los bytes recibidos.
@@ -42,7 +42,7 @@ py -3.13 -m venv .review-venv
   --require-hashes --find-links source\vendor\wheelhouse `
   -r source\requirements-runtime.lock
 .\.review-venv\Scripts\python.exe -m pip install --no-index --no-deps `
-  evidence\der_flex-0.1.0-py3-none-any.whl
+  evidence\der_flex-0.2.0-py3-none-any.whl
 .\.review-venv\Scripts\python.exe -m pip check
 ```
 

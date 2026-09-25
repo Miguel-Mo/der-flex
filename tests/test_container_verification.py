@@ -10,7 +10,7 @@ from scripts.verify_container import build_offline_provenance, validate_probe
 
 def test_container_probe_requires_installed_package_readiness_and_clean_dependencies() -> None:
     valid = {
-        "version": "0.1.0",
+        "version": "0.2.0",
         "location": "/usr/local/lib/python3.13/site-packages/der_flex/__init__.py",
         "ready": {"status": "ready"},
         "uid": 10001,
@@ -20,7 +20,7 @@ def test_container_probe_requires_installed_package_readiness_and_clean_dependen
     validate_probe(valid, "No broken requirements found.")
 
     for field, invalid_value in (
-        ("version", "0.2.0"),
+        ("version", "0.1.0"),
         ("location", "/app/src/der_flex/__init__.py"),
         ("ready", {"status": "starting"}),
         ("uid", 0),
