@@ -1,0 +1,35 @@
+{
+  "eventID": "oadr-event-001",
+  "clientName": "der-flex-ven",
+  "reportName": "DER Flex activation result",
+  "payloadDescriptors": [
+    {
+      "objectType": "REPORT_PAYLOAD_DESCRIPTOR",
+      "payloadType": "DER_FLEX_ACCEPTED_KW",
+      "units": "KW",
+      "confidence": 100
+    },
+    {
+      "objectType": "REPORT_PAYLOAD_DESCRIPTOR",
+      "payloadType": "DER_FLEX_ACTIVATION_STATUS"
+    }
+  ],
+  "resources": [
+    {
+      "resourceName": "aggregate:ES-MA-29700",
+      "intervalPeriod": {
+        "start": "2030-01-01T18:00:00Z",
+        "duration": "PT900S"
+      },
+      "intervals": [
+        {
+          "id": 0,
+          "payloads": [
+            {"type": "DER_FLEX_ACCEPTED_KW", "values": [10.0]},
+            {"type": "DER_FLEX_ACTIVATION_STATUS", "values": ["COMPLETED"]}
+          ]
+        }
+      ]
+    }
+  ]
+}

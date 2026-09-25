@@ -1,0 +1,47 @@
+# Arquitectura
+
+DER Flex es un monolito modular. Los adaptadores convierten protocolos externos a un
+dominio pequeño; el agregador nunca publica objetos por recurso.
+
+```text
+registro físico ─────────┐
+                        ├──> normalización ──> almacén de ofertas
+RM simulados ──S2/PEBC──┘                         │
+                                                 ├──> agregación + privacidad ──> REST
+                                                 │
+                                                 └──> reservas ──> activación PEBC
+                                                                     │
+OpenADR evento ──> adaptador ────────────────────────────────────────┤
+OpenADR reporte <────────────────────────── resultado agregado <─────┘
+```
+
+## Límites de módulos
+
+- `domain`: modelos internos, registro físico y almacenamiento en memoria.
+- `aggregation`: materializada actualmente en las consultas del almacén; suma capacidad,
+  energía y confianza por zona, intervalo y consecuencia.
+- `reservations`: asignación determinista, idempotencia y máquina de estados.
+- `adapters/s2`: validación, normalización y generación de instrucciones PEBC.
+- `adapters/openadr`: traducción opcional entre eventos, activaciones y reportes.
+- `api`: contrato REST; solo usa modelos agregados en las respuestas públicas.
+- `simulators`: perfiles sintéticos reproducibles sin hardware.
+- `observability`: límites HTTP, correlación, métricas y logs sin datos domésticos.
+
+## Invariantes
+
+1. La capacidad residual nunca es negativa ni supera la oferta elegible.
+2. Una misma clave idempotente no representa dos solicitudes distintas.
+3. Dos reservas concurrentes no pueden vender dos veces la misma capacidad.
+4. Un intervalo público requiere al menos `k` participantes distintos.
+5. Ningún contrato público de flexibilidad contiene `resource_id`.
+6. El núcleo trabaja en UTC, kW, kWh e intervalos `[inicio, fin)`.
+7. S2 solo puede reducir la envolvente física aprovisionada para un recurso habilitado.
+8. Una sesión anterior o un reloj fuera de tolerancia no puede recuperar capacidad.
+9. Ningún valor no finito atraviesa una frontera de dominio o una respuesta JSON.
+
+## Sustituciones previstas
+
+`InMemoryOfferStore` delimita la futura persistencia. Un piloto debería añadir una base
+de datos transaccional, cola duradera, OAuth2/OIDC, autorización por ámbito, gestión de
+secretos, protección SSRF, retención auditada y observabilidad distribuida sin cambiar
+la semántica del dominio público.

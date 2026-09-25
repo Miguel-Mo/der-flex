@@ -1,0 +1,100 @@
+{
+  "rm_handshake": {
+    "message_type": "Handshake",
+    "message_id": "10000000-0000-4000-8000-000000000001",
+    "role": "RM",
+    "supported_protocol_versions": ["1.0"]
+  },
+  "cem_handshake": {
+    "message_type": "Handshake",
+    "message_id": "20000000-0000-4000-8000-000000000001",
+    "role": "CEM",
+    "supported_protocol_versions": ["1.0"]
+  },
+  "handshake_response": {
+    "message_type": "HandshakeResponse",
+    "message_id": "20000000-0000-4000-8000-000000000002",
+    "selected_protocol_version": "1.0"
+  },
+  "resource_manager_details": {
+    "message_type": "ResourceManagerDetails",
+    "message_id": "10000000-0000-4000-8000-000000000002",
+    "resource_id": "10000000-0000-4000-8000-000000000100",
+    "name": "Deterministic home battery",
+    "roles": [
+      {"role": "ENERGY_CONSUMER", "commodity": "ELECTRICITY"},
+      {"role": "ENERGY_PRODUCER", "commodity": "ELECTRICITY"},
+      {"role": "ENERGY_STORAGE", "commodity": "ELECTRICITY"}
+    ],
+    "manufacturer": "DER Flex Simulator",
+    "model": "Battery v0",
+    "serial_number": "SIM-001",
+    "firmware_version": "0.0.1",
+    "instruction_processing_delay": 100,
+    "available_control_types": ["POWER_ENVELOPE_BASED_CONTROL"],
+    "provides_forecast": true,
+    "provides_power_measurement_types": ["ELECTRIC.POWER.L1"]
+  },
+  "select_control_type": {
+    "message_type": "SelectControlType",
+    "message_id": "20000000-0000-4000-8000-000000000003",
+    "control_type": "POWER_ENVELOPE_BASED_CONTROL"
+  },
+  "power_constraints": {
+    "message_type": "PEBC.PowerConstraints",
+    "message_id": "10000000-0000-4000-8000-000000000003",
+    "id": "30000000-0000-4000-8000-000000000001",
+    "valid_from": "2030-01-01T18:00:00Z",
+    "valid_until": "2030-01-01T19:00:00Z",
+    "consequence_type": "VANISH",
+    "allowed_limit_ranges": [
+      {
+        "commodity_quantity": "ELECTRIC.POWER.L1",
+        "limit_type": "UPPER_LIMIT",
+        "range_boundary": {"start_of_range": -5000.0, "end_of_range": 5000.0},
+        "abnormal_condition_only": false
+      },
+      {
+        "commodity_quantity": "ELECTRIC.POWER.L1",
+        "limit_type": "LOWER_LIMIT",
+        "range_boundary": {"start_of_range": -5000.0, "end_of_range": 5000.0},
+        "abnormal_condition_only": false
+      }
+    ]
+  },
+  "power_forecast": {
+    "message_type": "PowerForecast",
+    "message_id": "10000000-0000-4000-8000-000000000004",
+    "start_time": "2030-01-01T18:00:00Z",
+    "elements": [
+      {
+        "duration": 900000,
+        "power_values": [
+          {
+            "value_expected": 2000.0,
+            "value_lower_95PPR": 1800.0,
+            "value_upper_95PPR": 2200.0,
+            "commodity_quantity": "ELECTRIC.POWER.L1"
+          }
+        ]
+      }
+    ]
+  },
+  "instruction": {
+    "message_type": "PEBC.Instruction",
+    "message_id": "20000000-0000-4000-8000-000000000004",
+    "id": "40000000-0000-4000-8000-000000000001",
+    "execution_time": "2030-01-01T18:00:00Z",
+    "abnormal_condition": false,
+    "power_constraints_id": "30000000-0000-4000-8000-000000000001",
+    "power_envelopes": [
+      {
+        "id": "40000000-0000-4000-8000-000000000002",
+        "commodity_quantity": "ELECTRIC.POWER.L1",
+        "power_envelope_elements": [
+          {"duration": 900000, "upper_limit": 1000.0, "lower_limit": -1000.0}
+        ]
+      }
+    ]
+  }
+}

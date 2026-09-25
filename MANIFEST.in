@@ -1,0 +1,19 @@
+include .gitattributes
+include CHANGELOG.md
+include CODE_OF_CONDUCT.md
+include CONTRIBUTING.md
+include Dockerfile
+include LICENSE
+include PLAN.md
+include README.md
+include SECURITY.md
+include compose.yaml
+include pyproject.toml
+include requirements-runtime.lock
+include requirements-runtime.constraints
+recursive-include docs *.md *.json
+recursive-include examples *.http
+recursive-include scripts *.py
+recursive-include tests *.py *.json
+recursive-include vendor/wheelhouse *.whl
+global-exclude __pycache__ *.py[cod]

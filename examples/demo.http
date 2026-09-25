@@ -1,0 +1,22 @@
+### Health
+GET http://127.0.0.1:8000/health/ready
+
+### Published zones
+GET http://127.0.0.1:8000/api/v1/flexibility/zones
+
+### Replace timestamps with the interval printed when the demo starts
+GET http://127.0.0.1:8000/api/v1/flexibility?zone_id=ES-MA-29700&from=2026-09-12T12:30:00Z&to=2026-09-12T13:30:00Z
+
+### Reservation
+POST http://127.0.0.1:8000/api/v1/reservations
+Content-Type: application/json
+Idempotency-Key: demo-001
+
+{
+  "zone_id": "ES-MA-29700",
+  "interval_start": "2026-09-12T12:30:00Z",
+  "interval_end": "2026-09-12T12:45:00Z",
+  "direction": "UPWARD",
+  "power_kw": 10,
+  "consequence_type": "DEFER"
+}

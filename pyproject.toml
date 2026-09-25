@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools==84.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "der-flex"
+version = "0.1.0"
+description = "Open-source DER flexibility aggregation API"
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+license = "Apache-2.0"
+dependencies = [
+  "fastapi==0.141.1",
+  "s2-python[ws]==0.9.1",
+  "uvicorn==0.52.4",
+]
+
+[project.optional-dependencies]
+dev = [
+  "build==1.6.1",
+  "httpx2==2.12.0",
+  "mypy==2.3.1",
+  "openapi-schema-validator==0.9.0",
+  "pip-audit==2.10.1",
+  "pytest==9.0.3",
+  "PyYAML==6.0.3",
+  "ruff==0.16.7",
+  "setuptools==84.0.0",
+  "types-PyYAML==6.0.12.20260906",
+  "tzdata==2026.4",
+]
+
+[project.scripts]
+der-flex-demo = "der_flex.demo:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.13"
+check_untyped_defs = true
+disallow_untyped_defs = true
+warn_unused_ignores = true
+warn_return_any = true
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,0 +1,28 @@
+{
+  "id": "oadr-event-001",
+  "createdDateTime": "2030-01-01T17:00:00Z",
+  "modificationDateTime": "2030-01-01T17:00:00Z",
+  "objectType": "EVENT",
+  "programID": "der-flex-demo-program",
+  "eventName": "Upward flexibility dispatch",
+  "targets": ["ES-MA-29700"],
+  "payloadDescriptors": [
+    {
+      "objectType": "EVENT_PAYLOAD_DESCRIPTOR",
+      "payloadType": "DER_FLEX_UPWARD_KW",
+      "units": "KW"
+    }
+  ],
+  "intervalPeriod": {
+    "start": "2030-01-01T18:00:00Z",
+    "duration": "PT15M"
+  },
+  "intervals": [
+    {
+      "id": 0,
+      "payloads": [
+        {"type": "DER_FLEX_UPWARD_KW", "values": [10.0]}
+      ]
+    }
+  ]
+}

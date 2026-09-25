@@ -1,0 +1,176 @@
+{
+  "schema_version": "1.0",
+  "scope": "DER Flex 0.1.0 experimental local verification",
+  "claims": [
+    {
+      "id": "T01",
+      "claim": "La batería automatizada pasa desde las dependencias declaradas.",
+      "status": "PASS",
+      "implementation_paths": ["pyproject.toml", "requirements-runtime.constraints", ".gitattributes", "scripts/verify_release.py"],
+      "test_nodes": ["tests/test_release_verification.py::test_dev_extra_installs_every_no_isolation_build_requirement", "tests/test_release_verification.py::test_runtime_constraints_mirror_hashed_lock", "tests/test_release_verification.py::test_sdist_content_check_rejects_incomplete_archive", "tests/test_release_verification.py::test_wheel_normalization_removes_line_endings_and_metadata_variation", "tests/test_release_verification.py::test_deterministic_gzip_round_trips_without_zlib_compression"],
+      "commands": ["python -m pip install -c requirements-runtime.constraints -e .[dev]", "python -m pytest -q", "python scripts/verify_release.py"],
+      "evidence_outputs": ["evidence.json", "source-manifest.json"],
+      "residual_limit": "Wheel y sdist v4.3 coincidieron en una reconstrucción Linux externa. La integridad offline está encadenada por hashes; no existe identidad pública firmada ni reconstrucción externa del corte posterior."
+    },
+    {
+      "id": "T02",
+      "claim": "Ruff y mypy terminan sin incidencias en código y tests.",
+      "status": "PASS",
+      "implementation_paths": ["pyproject.toml", "scripts/verify_release.py"],
+      "test_nodes": [],
+      "commands": ["python -m ruff check .", "python -m mypy src scripts tests"],
+      "evidence_outputs": ["evidence.json"],
+      "residual_limit": "Todo el repositorio Python queda cubierto; la atestación de CI permanece pendiente."
+    },
+    {
+      "id": "P01",
+      "claim": "La sesión PEBC intercambia 16 mensajes aceptados por s2-python.",
+      "status": "PASS_WITH_SCOPE_LIMIT",
+      "implementation_paths": ["scripts/s2_pebc_smoke.py", "tests/fixtures/s2/pebc_session.json"],
+      "test_nodes": ["tests/test_s2_pebc_smoke.py::test_complete_session_exchanges_sixteen_validated_wire_messages"],
+      "commands": ["python scripts/s2_pebc_smoke.py"],
+      "evidence_outputs": ["evidence.json"],
+      "residual_limit": "Valida parser y sesión local, no hardware ni certificación S2 externa."
+    },
+    {
+      "id": "P02",
+      "claim": "Los fixtures OpenADR se validan contra el esquema 3.1.0 identificado.",
+      "status": "PASS_WITH_SCOPE_LIMIT",
+      "implementation_paths": ["scripts/verify_openadr_contract.py", "docs/revision-externa-2026-09-12.md", "tests/fixtures/openadr/dispatch-event-3.1.0.json", "tests/fixtures/openadr/activation-report-3.1.0.json"],
+      "test_nodes": ["tests/test_openadr_adapter.py::test_openadr_event_dispatches_and_returns_aggregate_report"],
+      "commands": ["python scripts/verify_openadr_contract.py PATH_TO_OPENADR3_YAML"],
+      "evidence_outputs": ["evidence.json"],
+      "residual_limit": "El esquema oficial no se incluye; Test Tool y certificación externos no ejecutados."
+    },
+    {
+      "id": "PR01",
+      "claim": "La salida no revela resource_id y suprime cambios de cohorte, valor y reserva.",
+      "status": "PASS_WITH_SCOPE_LIMIT",
+      "implementation_paths": ["src/der_flex/domain/store.py", "src/der_flex/reservations/service.py", "src/der_flex/api/app.py"],
+      "test_nodes": ["tests/test_heterogeneous_aggregation.py::test_published_cell_is_suppressed_after_cohort_change_to_prevent_difference_attack", "tests/test_heterogeneous_aggregation.py::test_published_cell_is_suppressed_after_offer_value_changes", "tests/test_reservations.py::test_public_api_suppresses_residual_delta_after_reservation"],
+      "commands": ["python -m pytest -q tests/test_heterogeneous_aggregation.py tests/test_reservations.py"],
+      "evidence_outputs": ["evidence.json", "mutation-report.json"],
+      "residual_limit": "La supresión vive en un proceso y no constituye anonimización formal."
+    },
+    {
+      "id": "C01",
+      "claim": "Las reservas concurrentes no venden dos veces capacidad dentro de un proceso.",
+      "status": "PASS_WITH_SCOPE_LIMIT",
+      "implementation_paths": ["src/der_flex/reservations/service.py"],
+      "test_nodes": ["tests/test_reservations.py::test_concurrent_reservations_cannot_double_sell_capacity", "tests/test_invariants.py::test_reservation_burst_never_oversells_or_makes_residual_negative"],
+      "commands": ["python -m pytest -q tests/test_reservations.py tests/test_invariants.py"],
+      "evidence_outputs": ["evidence.json", "mutation-report.json"],
+      "residual_limit": "RLock solo protege un proceso; persistencia y concurrencia distribuida están aplazadas."
+    },
+    {
+      "id": "S01",
+      "claim": "La demo ejecuta 108 DER durante una hora y publica 12 agregados.",
+      "status": "PASS",
+      "implementation_paths": ["src/der_flex/demo.py", "src/der_flex/simulators/fleet.py"],
+      "test_nodes": ["tests/test_demo_scale.py::test_demo_runs_108_resources_for_one_simulated_hour_without_identifier_leak"],
+      "commands": ["python -m pytest -q tests/test_demo_scale.py"],
+      "evidence_outputs": ["evidence.json"],
+      "residual_limit": "Flota sintética; no implica validación con DER físicos."
+    },
+    {
+      "id": "PERF01",
+      "claim": "El benchmark HTTP/ASGI local mantiene p95 por debajo de 500 ms.",
+      "status": "PASS_WITH_SCOPE_LIMIT",
+      "implementation_paths": ["scripts/benchmark_demo.py"],
+      "test_nodes": [],
+      "commands": ["python scripts/benchmark_demo.py"],
+      "evidence_outputs": [],
+      "residual_limit": "Benchmark local en memoria; no representa red, TLS, base de datos ni carga distribuida."
+    },
+    {
+      "id": "SEC01",
+      "claim": "pip-audit no comunica vulnerabilidades conocidas en la resolución actual.",
+      "status": "PASS_WITH_SCOPE_LIMIT",
+      "implementation_paths": ["pyproject.toml", ".github/workflows/ci.yml", "scripts/verify_release.py"],
+      "test_nodes": ["tests/test_release_verification.py::test_sbom_inventory_contains_transitive_runtime_closure_only", "tests/test_release_verification.py::test_security_audit_report_records_source_date_tool_and_lock"],
+      "commands": ["python -m pip_audit . --progress-spinner off", "python -m pip_audit --local --skip-editable --progress-spinner off"],
+      "evidence_outputs": ["sbom.cdx.json", "security-audit.json"],
+      "residual_limit": "Se registra fecha, herramienta, fuente y lock; PyPI no expone hash de snapshot y falta CI firmado."
+    },
+    {
+      "id": "PKG01",
+      "claim": "El contenedor instala un wheel autocontenido 0.1.0.",
+      "status": "PASS_WITH_SCOPE_LIMIT",
+      "implementation_paths": ["Dockerfile", "compose.yaml", ".github/workflows/ci.yml", "scripts/verify_container.py"],
+      "test_nodes": ["tests/test_container_verification.py::test_container_probe_requires_installed_package_readiness_and_clean_dependencies"],
+      "commands": ["python scripts/verify_container.py"],
+      "evidence_outputs": ["evidence.json", "container-report.json"],
+      "residual_limit": "Ejecutado en un motor Docker Linux local; falta repetición independiente y atestación firmada de la imagen."
+    },
+    {
+      "id": "ORD01",
+      "claim": "Una oferta antigua, repetida con conflicto o de sesión previa no recupera capacidad.",
+      "status": "PASS_WITH_SCOPE_LIMIT",
+      "implementation_paths": ["src/der_flex/domain/store.py", "src/der_flex/adapters/s2/pebc.py", "docs/adr/007-orden-temporal-sesiones.md"],
+      "test_nodes": ["tests/test_temporal_ordering.py::test_new_session_accepts_reset_counter_and_rejects_previous_session", "tests/test_temporal_ordering.py::test_reconnect_requires_source_position_to_advance"],
+      "commands": ["python -m pytest -q tests/test_temporal_ordering.py"],
+      "evidence_outputs": ["evidence.json", "mutation-report.json"],
+      "residual_limit": "El high-water mark todavía reside en memoria."
+    },
+    {
+      "id": "PHY01",
+      "claim": "S2 no puede ampliar la envolvente física aprovisionada de potencia, energía o rampa.",
+      "status": "PASS_WITH_SCOPE_LIMIT",
+      "implementation_paths": ["src/der_flex/domain/resources.py", "src/der_flex/adapters/s2/pebc.py", "docs/adr/006-registro-fisico-independiente.md"],
+      "test_nodes": ["tests/test_resource_registry.py::test_forged_s2_limits_cannot_expand_operator_owned_envelope", "tests/test_invariants.py::test_random_physical_envelopes_are_never_exceeded"],
+      "commands": ["python -m pytest -q tests/test_resource_registry.py tests/test_invariants.py"],
+      "evidence_outputs": ["evidence.json", "mutation-report.json"],
+      "residual_limit": "Registro local de demostración, aún sin fuente operativa externa."
+    },
+    {
+      "id": "FZ01",
+      "claim": "Las fronteras JSON, S2 y OpenADR resisten campañas deterministas de entradas adversarias.",
+      "status": "PASS",
+      "implementation_paths": ["tests/test_fuzz_boundaries.py", "src/der_flex/adapters/openadr/adapter.py"],
+      "test_nodes": ["tests/test_fuzz_boundaries.py::test_fuzzed_reservation_json_never_raises_or_returns_server_error", "tests/test_fuzz_boundaries.py::test_fuzzed_s2_numeric_fields_are_rejected_or_remain_physically_bounded"],
+      "commands": ["python -m pytest -q tests/test_fuzz_boundaries.py"],
+      "evidence_outputs": ["evidence.json"],
+      "residual_limit": "1.205 casos deterministas; no equivale a fuzzing continuo ilimitado."
+    },
+    {
+      "id": "MT01",
+      "claim": "Las pruebas detectan seis defectos dirigidos en reglas críticas.",
+      "status": "PASS_WITH_SCOPE_LIMIT",
+      "implementation_paths": ["scripts/mutation_gate.py", "tests/test_mutation_gate.py"],
+      "test_nodes": ["tests/test_mutation_gate.py::test_mutation_catalog_has_unique_ids_and_targets"],
+      "commands": ["python scripts/mutation_gate.py"],
+      "evidence_outputs": ["mutation-report.json", "evidence.json"],
+      "residual_limit": "Seis mutantes seleccionados; no es mutación exhaustiva de todo el código."
+    },
+    {
+      "id": "SBOM01",
+      "claim": "El SBOM representa el cierre transitivo de producción y su grafo.",
+      "status": "PASS",
+      "implementation_paths": ["scripts/verify_release.py", "tests/test_release_verification.py"],
+      "test_nodes": ["tests/test_release_verification.py::test_cyclonedx_dependency_references_are_complete"],
+      "commands": ["python scripts/verify_release.py"],
+      "evidence_outputs": ["sbom.cdx.json", "SHA256SUMS"],
+      "residual_limit": "Los hashes identifican METADATA instalado, no los wheels originales."
+    },
+    {
+      "id": "OFF01",
+      "claim": "El wheel y sus 15 dependencias se instalan sin índice en una venv nueva con hashes obligatorios.",
+      "status": "PASS_WITH_SCOPE_LIMIT",
+      "implementation_paths": ["requirements-runtime.lock", "vendor/wheelhouse/fastapi-0.141.1-py3-none-any.whl", "scripts/verify_release.py"],
+      "test_nodes": ["tests/test_release_verification.py::test_wheelhouse_matches_runtime_lock_and_supported_platforms", "tests/test_release_verification.py::test_wheelhouse_rejects_a_tampered_lock"],
+      "commands": ["python scripts/verify_release.py"],
+      "evidence_outputs": ["requirements-runtime.lock", "SHA256SUMS", "evidence.json"],
+      "residual_limit": "Wheelhouse limitado a CPython 3.13 en Windows AMD64 y Linux x86-64."
+    },
+    {
+      "id": "BND01",
+      "claim": "Un único ZIP contiene fuente, evidencia, runtime offline, prompt y verificador independiente.",
+      "status": "PASS_WITH_SCOPE_LIMIT",
+      "implementation_paths": ["scripts/build_review_bundle.py", "scripts/verify_review_bundle.py", "scripts/verify_container.py", "docs/reviewer-start-here.md", "docs/external-review-prompt-v4.md", "docs/expected-results-v4.md"],
+      "test_nodes": ["tests/test_review_bundle.py::test_deterministic_bundle_zip_ignores_source_mtime", "tests/test_review_bundle.py::test_bundle_verifier_rejects_tampered_file", "tests/test_review_bundle.py::test_bundle_verifier_rejects_unexpected_file", "tests/test_container_verification.py::test_offline_provenance_links_release_container_and_materials"],
+      "commands": ["python scripts/build_review_bundle.py", "python verify_bundle.py"],
+      "evidence_outputs": ["source-manifest.json", "SHA256SUMS", "evidence.json", "offline-provenance.json"],
+      "residual_limit": "La procedencia offline demuestra integridad, no autoría; la suite de desarrollo puede requerir red y solo el runtime está vendorizado."
+    }
+  ]
+}
