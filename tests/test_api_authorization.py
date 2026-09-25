@@ -26,6 +26,7 @@ def secured_client() -> TestClient:
     for zone_id, resource_id in (("north", "north-1"), ("south", "south-1")):
         store.upsert(
             FlexibilityOffer(
+                tenant_id=f"{zone_id}-tenant",
                 resource_id=resource_id,
                 zone_id=zone_id,
                 interval_start=now,

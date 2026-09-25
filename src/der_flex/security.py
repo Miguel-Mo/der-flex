@@ -37,6 +37,10 @@ class AccessPrincipal:
             # Do not disclose whether a zone exists for another tenant.
             raise AuthorizationError("zone is outside the tenant boundary")
 
+    def require_tenant(self, tenant_id: str) -> None:
+        if self.tenant_id != tenant_id:
+            raise AuthorizationError("object is outside the tenant boundary")
+
 
 class Authenticator(Protocol):
     def authenticate(self, bearer_token: str | None) -> AccessPrincipal: ...

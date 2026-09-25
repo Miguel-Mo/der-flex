@@ -28,7 +28,7 @@ START = datetime(2030, 1, 1, 18, 0, tzinfo=UTC)
 END = START + timedelta(minutes=15)
 
 
-def build_offer_store() -> InMemoryOfferStore:
+def build_offer_store(tenant_id: str = "development") -> InMemoryOfferStore:
     store = InMemoryOfferStore(minimum_participants=10)
     for resource in build_demo_fleet():
         constraints, forecast = resource.s2_offer_messages(START)
@@ -43,7 +43,7 @@ def build_offer_store() -> InMemoryOfferStore:
             observed_at=START,
             received_at=START,
         ):
-            store.upsert(offer)
+            store.upsert(offer.model_copy(update={"tenant_id": tenant_id}))
     return store
 
 
@@ -131,6 +131,46 @@ def test_schema_records_migration_and_database_invariants(
         "der_flex_activation_counts",
         "der_flex_public_residual_nonnegative",
     } <= constraints
+
+
+def test_tenants_have_independent_capacity_and_idempotency(
+    postgres_backend: PostgresReservationBackend,
+) -> None:
+    tenant_a = ReservationService(
+        build_offer_store("tenant-a"), backend=postgres_backend
+    )
+    tenant_b = ReservationService(
+        build_offer_store("tenant-b"), backend=postgres_backend
+    )
+
+    first = tenant_a.create(
+        tenant_id="tenant-a",
+        idempotency_key="same-client-key",
+        zone_id=ZONES[0],
+        interval_start=START,
+        interval_end=END,
+        direction="UPWARD",
+        power_kw=30,
+    )
+    second = tenant_b.create(
+        tenant_id="tenant-b",
+        idempotency_key="same-client-key",
+        zone_id=ZONES[0],
+        interval_start=START,
+        interval_end=END,
+        direction="UPWARD",
+        power_kw=30,
+    )
+
+    assert first.reservation_id != second.reservation_id
+    assert first.tenant_id == "tenant-a"
+    assert second.tenant_id == "tenant-b"
+    assert DATABASE_URL is not None
+    restarted = PostgresReservationBackend(DATABASE_URL)
+    loaded = ReservationService(
+        build_offer_store("tenant-a"), backend=restarted
+    ).get(first.reservation_id)
+    assert loaded.tenant_id == "tenant-a"
 
 
 def test_two_operating_system_processes_cannot_double_sell(

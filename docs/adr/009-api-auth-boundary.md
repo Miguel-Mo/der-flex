@@ -23,8 +23,10 @@ seguro.
 ## Consecuencias y trabajo pendiente
 
 - Esta frontera permite probar la matriz rol×endpoint sin acoplar FastAPI a un proveedor.
-- La pertenencia se basa todavía en propiedad exclusiva de zona; el siguiente incremento
-  debe persistir `tenant_id` en recursos, ofertas, reservas, activaciones e idempotencia.
+- `tenant_id` se conserva en recursos, ofertas, reservas, agregados internos y estado de
+  privacidad; la capacidad, los locks y la idempotencia se particionan por tenant.
+- Las activaciones heredan su frontera de la reserva y no exponen una ruta sin comprobar
+  antes el tenant propietario.
 - Falta un verificador OIDC/JWT con emisor, audiencia, caducidad, rotación y claves
   públicas. Los tokens estáticos no cierran el hito 15.
 - Autenticación administrativa, auditoría de rechazos y gestión segura de secretos siguen

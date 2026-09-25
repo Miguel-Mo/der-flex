@@ -50,6 +50,7 @@ class ProvisionedResource(BaseModel):
     provisioning_version: int = Field(ge=1)
     provisioned_at: datetime
     enabled: bool = True
+    tenant_id: str = "development"
 
     @model_validator(mode="after")
     def validate_envelope(self) -> ProvisionedResource:
@@ -73,7 +74,9 @@ class ProvisionedResource(BaseModel):
 
 
 class ResourceRegistry(Protocol):
-    def require(self, resource_id: str, zone_id: str) -> ProvisionedResource: ...
+    def require(
+        self, resource_id: str, zone_id: str, tenant_id: str = "development"
+    ) -> ProvisionedResource: ...
 
 
 class InMemoryResourceRegistry:
@@ -99,13 +102,17 @@ class InMemoryResourceRegistry:
                     )
             self._records[record.resource_id] = record
 
-    def require(self, resource_id: str, zone_id: str) -> ProvisionedResource:
+    def require(
+        self, resource_id: str, zone_id: str, tenant_id: str = "development"
+    ) -> ProvisionedResource:
         with self._lock:
             record = self._records.get(resource_id)
             if record is None:
                 raise UnknownResourceError(f"resource {resource_id!r} is not provisioned")
             if not record.enabled:
                 raise DisabledResourceError(f"resource {resource_id!r} is disabled")
+            if record.tenant_id != tenant_id:
+                raise UnknownResourceError(f"resource {resource_id!r} is not provisioned")
             if record.zone_id != zone_id:
                 raise ResourceZoneMismatch(
                     f"resource {resource_id!r} is not provisioned for zone {zone_id!r}"

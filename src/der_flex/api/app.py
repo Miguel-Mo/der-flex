@@ -201,7 +201,7 @@ def create_app(
             AccessPrincipal, Depends(require_access("flexibility:read"))
         ],
     ) -> dict[str, list[str]]:
-        zones = offer_store.zones()
+        zones = offer_store.zones(tenant_id=principal.tenant_id)
         if "*" not in principal.zone_ids:
             zones = [zone for zone in zones if zone in principal.zone_ids]
         return {"data": zones}
@@ -222,7 +222,9 @@ def create_app(
             raise HTTPException(status_code=422, detail="to must be after from")
         if end - start > timedelta(days=7):
             raise HTTPException(status_code=422, detail="query window cannot exceed seven days")
-        aggregates = offer_store.query(zone_id, start, end)
+        aggregates = offer_store.query(
+            zone_id, start, end, tenant_id=principal.tenant_id
+        )
         return FlexibilityResponse(data=reservations.public_residual_capacity(aggregates))
 
     @app.post(
@@ -241,7 +243,8 @@ def create_app(
     ) -> Reservation:
         require_zone(principal, request.zone_id)
         return reservations.create(
-            idempotency_key=f"{principal.tenant_id}:{idempotency_key}",
+            idempotency_key=idempotency_key,
+            tenant_id=principal.tenant_id,
             zone_id=request.zone_id,
             interval_start=request.interval_start,
             interval_end=request.interval_end,
@@ -259,6 +262,7 @@ def create_app(
         ],
     ) -> Reservation:
         reservation = reservations.get(reservation_id)
+        principal.require_tenant(reservation.tenant_id)
         require_zone(principal, reservation.zone_id)
         return reservation
 
@@ -269,7 +273,9 @@ def create_app(
             AccessPrincipal, Depends(require_access("reservation:write"))
         ],
     ) -> Reservation:
-        require_zone(principal, reservations.get(reservation_id).zone_id)
+        reservation = reservations.get(reservation_id)
+        principal.require_tenant(reservation.tenant_id)
+        require_zone(principal, reservation.zone_id)
         return reservations.cancel(reservation_id)
 
     @app.post(
@@ -282,7 +288,9 @@ def create_app(
             AccessPrincipal, Depends(require_access("activation:write"))
         ],
     ) -> Activation:
-        require_zone(principal, reservations.get(reservation_id).zone_id)
+        reservation = reservations.get(reservation_id)
+        principal.require_tenant(reservation.tenant_id)
+        require_zone(principal, reservation.zone_id)
         return reservations.activate(reservation_id)
 
     @app.get("/api/v1/activations/{activation_id}", response_model=Activation)
@@ -293,9 +301,9 @@ def create_app(
         ],
     ) -> Activation:
         activation = reservations.get_activation(activation_id)
-        require_zone(
-            principal, reservations.get(activation.reservation_id).zone_id
-        )
+        reservation = reservations.get(activation.reservation_id)
+        principal.require_tenant(reservation.tenant_id)
+        require_zone(principal, reservation.zone_id)
         return activation
 
     return app

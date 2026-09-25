@@ -21,9 +21,13 @@ class OfferStore(Protocol):
 
     def upsert(self, offer: FlexibilityOffer) -> None: ...
 
-    def remove_resource(self, resource_id: str) -> int: ...
+    def remove_resource(
+        self, resource_id: str, *, tenant_id: str = "development"
+    ) -> int: ...
 
-    def zones(self, *, now: datetime | None = None) -> list[str]: ...
+    def zones(
+        self, *, tenant_id: str = "development", now: datetime | None = None
+    ) -> list[str]: ...
 
     def eligible_offers(
         self,
@@ -32,6 +36,7 @@ class OfferStore(Protocol):
         interval_start: datetime,
         interval_end: datetime,
         consequence_type: ConsequenceType,
+        tenant_id: str = "development",
         now: datetime | None = None,
     ) -> list[FlexibilityOffer]: ...
 
@@ -41,6 +46,7 @@ class OfferStore(Protocol):
         start: datetime,
         end: datetime,
         *,
+        tenant_id: str = "development",
         now: datetime | None = None,
     ) -> list[FlexibilityAggregate]: ...
 
@@ -53,24 +59,26 @@ class InMemoryOfferStore:
             raise ValueError("minimum_participants must be positive")
         self.minimum_participants = minimum_participants
         self._lock = RLock()
-        self._offers: dict[tuple[str, str, datetime, str], FlexibilityOffer] = {}
-        self._source_positions: dict[str, tuple[int, int]] = {}
-        self._disconnected_resources: set[str] = set()
+        self._offers: dict[tuple[str, str, str, datetime, str], FlexibilityOffer] = {}
+        self._source_positions: dict[tuple[str, str], tuple[int, int]] = {}
+        self._disconnected_resources: set[tuple[str, str]] = set()
         self._published_cohorts: dict[
-            tuple[str, datetime, datetime, ConsequenceType], frozenset[str]
+            tuple[str, str, datetime, datetime, ConsequenceType], frozenset[str]
         ] = {}
         self._suppressed_cells: set[
-            tuple[str, datetime, datetime, ConsequenceType]
+            tuple[str, str, datetime, datetime, ConsequenceType]
         ] = set()
 
     def upsert(self, offer: FlexibilityOffer) -> None:
         key = (
+            offer.tenant_id,
             offer.resource_id,
             offer.zone_id,
             offer.interval_start,
             offer.consequence_type,
         )
         cell = (
+            offer.tenant_id,
             offer.zone_id,
             offer.interval_start,
             offer.interval_end,
@@ -78,9 +86,10 @@ class InMemoryOfferStore:
         )
         with self._lock:
             incoming_position = (offer.source_epoch, offer.source_sequence)
-            source_position = self._source_positions.get(offer.resource_id)
+            resource_key = (offer.tenant_id, offer.resource_id)
+            source_position = self._source_positions.get(resource_key)
             if (
-                offer.resource_id in self._disconnected_resources
+                resource_key in self._disconnected_resources
                 and source_position is not None
                 and incoming_position <= source_position
             ):
@@ -96,12 +105,14 @@ class InMemoryOfferStore:
                     existing_key
                     for existing_key, existing_offer in self._offers.items()
                     if existing_offer.resource_id == offer.resource_id
+                    and existing_offer.tenant_id == offer.tenant_id
                     and (existing_offer.source_epoch, existing_offer.source_sequence)
                     < incoming_position
                 ]
                 for obsolete_key in obsolete_keys:
                     obsolete = self._offers.pop(obsolete_key)
                     obsolete_cell = (
+                        obsolete.tenant_id,
                         obsolete.zone_id,
                         obsolete.interval_start,
                         obsolete.interval_end,
@@ -109,8 +120,8 @@ class InMemoryOfferStore:
                     )
                     if obsolete_cell in self._published_cohorts:
                         self._suppressed_cells.add(obsolete_cell)
-            self._source_positions[offer.resource_id] = incoming_position
-            self._disconnected_resources.discard(offer.resource_id)
+            self._source_positions[resource_key] = incoming_position
+            self._disconnected_resources.discard(resource_key)
             previous = self._offers.get(key)
             if previous == offer:
                 return
@@ -125,12 +136,19 @@ class InMemoryOfferStore:
                 self._suppressed_cells.add(cell)
             self._offers[key] = offer
 
-    def remove_resource(self, resource_id: str) -> int:
+    def remove_resource(
+        self, resource_id: str, *, tenant_id: str = "development"
+    ) -> int:
         with self._lock:
-            keys = [key for key in self._offers if key[0] == resource_id]
+            keys = [
+                key
+                for key, offer in self._offers.items()
+                if offer.resource_id == resource_id and offer.tenant_id == tenant_id
+            ]
             for key in keys:
                 offer = self._offers[key]
                 cell = (
+                    offer.tenant_id,
                     offer.zone_id,
                     offer.interval_start,
                     offer.interval_end,
@@ -140,16 +158,18 @@ class InMemoryOfferStore:
                     self._suppressed_cells.add(cell)
                 del self._offers[key]
             if keys:
-                self._disconnected_resources.add(resource_id)
+                self._disconnected_resources.add((tenant_id, resource_id))
             return len(keys)
 
-    def zones(self, *, now: datetime | None = None) -> list[str]:
+    def zones(
+        self, *, tenant_id: str = "development", now: datetime | None = None
+    ) -> list[str]:
         current = now or datetime.now(UTC)
         counts: dict[str, set[str]] = defaultdict(set)
         with self._lock:
             offers = tuple(self._offers.values())
         for offer in offers:
-            if offer.expires_at >= current:
+            if offer.tenant_id == tenant_id and offer.expires_at >= current:
                 counts[offer.zone_id].add(offer.resource_id)
         return sorted(
             zone
@@ -164,6 +184,7 @@ class InMemoryOfferStore:
         interval_start: datetime,
         interval_end: datetime,
         consequence_type: ConsequenceType,
+        tenant_id: str = "development",
         now: datetime | None = None,
     ) -> list[FlexibilityOffer]:
         current = now or datetime.now(UTC)
@@ -174,6 +195,7 @@ class InMemoryOfferStore:
                 offer
                 for offer in offers
                 if offer.zone_id == zone_id
+                and offer.tenant_id == tenant_id
                 and offer.interval_start == interval_start
                 and offer.interval_end == interval_end
                 and offer.consequence_type == consequence_type
@@ -188,6 +210,7 @@ class InMemoryOfferStore:
         start: datetime,
         end: datetime,
         *,
+        tenant_id: str = "development",
         now: datetime | None = None,
     ) -> list[FlexibilityAggregate]:
         generated_at = now or datetime.now(UTC)
@@ -197,7 +220,11 @@ class InMemoryOfferStore:
 
         with self._lock:
             for offer in self._offers.values():
-                if offer.zone_id != zone_id or offer.expires_at < generated_at:
+                if (
+                    offer.tenant_id != tenant_id
+                    or offer.zone_id != zone_id
+                    or offer.expires_at < generated_at
+                ):
                     continue
                 if offer.interval_start < start or offer.interval_end > end:
                     continue
@@ -207,13 +234,20 @@ class InMemoryOfferStore:
 
             result: list[FlexibilityAggregate] = []
             for (interval_start, interval_end, consequence_type), offers in sorted(groups.items()):
-                cell = (zone_id, interval_start, interval_end, consequence_type)
+                cell = (
+                    tenant_id,
+                    zone_id,
+                    interval_start,
+                    interval_end,
+                    consequence_type,
+                )
                 cohort = frozenset(offer.resource_id for offer in offers)
                 previous_cohort = self._published_cohorts.get(cell)
                 if previous_cohort is not None and previous_cohort != cohort:
                     self._suppressed_cells.add(cell)
                 if any(
-                    published_zone == zone_id
+                    published_tenant == tenant_id
+                    and published_zone == zone_id
                     and published_consequence == consequence_type
                     and (
                         published_end == interval_start
@@ -221,6 +255,7 @@ class InMemoryOfferStore:
                     )
                     and published_cohort != cohort
                     for (
+                        published_tenant,
                         published_zone,
                         published_start,
                         published_end,
@@ -246,6 +281,7 @@ class InMemoryOfferStore:
                 )
                 result.append(
                     FlexibilityAggregate(
+                        tenant_id=tenant_id,
                         zone_id=zone_id,
                         interval_start=interval_start,
                         interval_end=interval_end,

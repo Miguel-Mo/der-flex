@@ -35,6 +35,7 @@ class FlexibilityOffer(BaseModel):
     source_sequence: int = Field(ge=0)
     observed_at: datetime
     expires_at: datetime
+    tenant_id: str = "development"
 
     @model_validator(mode="after")
     def validate_times(self) -> FlexibilityOffer:
@@ -70,6 +71,7 @@ class FlexibilityAggregate(BaseModel):
     product_class: Literal["BEST_EFFORT_PEBC"] = "BEST_EFFORT_PEBC"
     consequence_type: ConsequenceType
     generated_at: datetime
+    tenant_id: str = Field(default="development", exclude=True)
 
 
 class Reservation(BaseModel):
@@ -89,6 +91,7 @@ class Reservation(BaseModel):
     status: ReservationStatus
     created_at: datetime
     expires_at: datetime
+    tenant_id: str = Field(default="development", exclude=True)
 
 
 class Activation(BaseModel):

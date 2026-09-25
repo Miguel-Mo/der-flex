@@ -16,7 +16,7 @@ from der_flex.domain.models import (
     Reservation,
 )
 
-type ProductCell = tuple[str, datetime, datetime, ConsequenceType]
+type ProductCell = tuple[str, str, datetime, datetime, ConsequenceType]
 type Residual = tuple[float, float, float, float]
 
 

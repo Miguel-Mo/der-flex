@@ -221,7 +221,7 @@ def test_schema_version_two_is_recorded(
                 """
             ).fetchall()
         }
-    assert versions == [(1,), (2,), (3,)]
+    assert versions == [(1,), (2,), (3,), (4,), (5,)]
     assert {
         "der_flex_resource_power",
         "der_flex_resource_energy",
@@ -244,12 +244,15 @@ def test_offer_update_waits_for_reservation_product_lock(
             "source_version": f"{offer.source_version}-locked",
         }
     )
-    lock_key = product_lock_key(
-        offer.zone_id,
-        offer.interval_start,
-        offer.interval_end,
-        offer.consequence_type,
-        "UPWARD",
+    lock_key = (
+        f"tenant:{offer.tenant_id}:"
+        + product_lock_key(
+            offer.zone_id,
+            offer.interval_start,
+            offer.interval_end,
+            offer.consequence_type,
+            "UPWARD",
+        )
     )
     started = Event()
 

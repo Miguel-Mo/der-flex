@@ -83,6 +83,7 @@ class ReservationService:
         self,
         *,
         idempotency_key: str,
+        tenant_id: str = "development",
         zone_id: str,
         interval_start: datetime,
         interval_end: datetime,
@@ -101,6 +102,7 @@ class ReservationService:
         ):
             raise ValueError("invalid reservation quantity or interval")
         payload: dict[str, object] = {
+            "tenant_id": tenant_id,
             "zone_id": zone_id,
             "interval_start": interval_start,
             "interval_end": interval_end,
@@ -110,6 +112,7 @@ class ReservationService:
             "callback_url": callback_url,
         }
         fingerprint = self._fingerprint(payload)
+        tenant_idempotency_key = f"{tenant_id}:{idempotency_key}"
 
         product_key = product_lock_key(
             zone_id,
@@ -119,10 +122,13 @@ class ReservationService:
             direction,
         )
         with self.backend.transaction(
-            (product_key, f"idempotency:{idempotency_key}")
+            (
+                f"tenant:{tenant_id}:{product_key}",
+                f"idempotency:{tenant_idempotency_key}",
+            )
         ) as state:
             state.expire(current)
-            previous = state.get_idempotency(idempotency_key)
+            previous = state.get_idempotency(tenant_idempotency_key)
             if previous:
                 previous_fingerprint, reservation_id = previous
                 if previous_fingerprint != fingerprint:
@@ -133,6 +139,7 @@ class ReservationService:
                 return reservation
 
             offers = self.offer_store.eligible_offers(
+                tenant_id=tenant_id,
                 zone_id=zone_id,
                 interval_start=interval_start,
                 interval_end=interval_end,
@@ -169,6 +176,7 @@ class ReservationService:
 
             reservation_id = uuid.uuid4()
             reservation = Reservation(
+                tenant_id=tenant_id,
                 reservation_id=reservation_id,
                 correlation_id=uuid.uuid4(),
                 zone_id=zone_id,
@@ -187,7 +195,7 @@ class ReservationService:
             state.save_reservation(
                 reservation,
                 tuple(allocations),
-                idempotency_key=idempotency_key,
+                idempotency_key=tenant_idempotency_key,
                 fingerprint=fingerprint,
                 callback_url=callback_url,
             )
@@ -388,7 +396,8 @@ class ReservationService:
             downward = 0.0
             for reservation in reservations:
                 same_product = (
-                    reservation.zone_id == aggregate.zone_id
+                    reservation.tenant_id == aggregate.tenant_id
+                    and reservation.zone_id == aggregate.zone_id
                     and reservation.interval_start == aggregate.interval_start
                     and reservation.interval_end == aggregate.interval_end
                     and reservation.consequence_type == aggregate.consequence_type
@@ -424,7 +433,8 @@ class ReservationService:
         """Publish a stable residual cell or suppress it after reservation changes."""
 
         lock_keys = tuple(
-            product_lock_key(
+            f"tenant:{item.tenant_id}:"
+            + product_lock_key(
                 item.zone_id,
                 item.interval_start,
                 item.interval_end,
@@ -440,6 +450,7 @@ class ReservationService:
             published: list[FlexibilityAggregate] = []
             for aggregate in adjusted:
                 cell = (
+                    aggregate.tenant_id,
                     aggregate.zone_id,
                     aggregate.interval_start,
                     aggregate.interval_end,
