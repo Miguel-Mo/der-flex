@@ -182,6 +182,9 @@ fallos auditable, sin efectos duplicados en un receptor idempotente.
 
 ## Hito 15 — Autenticación, autorización y aislamiento multiempresa
 
+**Estado:** en curso. Existe una primera frontera inyectable de principal, ámbitos y
+propiedad exclusiva de zonas; falta persistir `tenant_id` y verificar identidad OIDC.
+
 **Problema a resolver:** cualquier cliente de red puede consultar agregados o reservar
 capacidad y no existe una frontera de tenant.
 

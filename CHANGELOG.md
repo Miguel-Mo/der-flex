@@ -5,6 +5,12 @@ semántico.
 
 ## [Unreleased]
 
+### Added
+
+- Frontera de autorización inyectable para la API con identidad de servicio, tenant,
+  ámbitos separados y propiedad exclusiva de zonas; incluye pruebas de tokens inválidos,
+  escalada de ámbito, acceso cruzado por zona y UUID de reserva.
+
 ## [0.2.0] - 2026-09-25
 
 ### Added

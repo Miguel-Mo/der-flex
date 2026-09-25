@@ -1,11 +1,9 @@
-from __future__ import annotations
-
 import ipaddress
 from datetime import datetime, timedelta
 from typing import Annotated, Self
 from uuid import UUID
 
-from fastapi import FastAPI, Header, HTTPException, Query, Request, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, model_validator
@@ -30,6 +28,13 @@ from der_flex.reservations import (
     ReservationNotFound,
     ReservationService,
     ReservationStateConflict,
+)
+from der_flex.security import (
+    AccessPrincipal,
+    AuthenticationError,
+    Authenticator,
+    AuthorizationError,
+    DevelopmentAuthenticator,
 )
 
 
@@ -77,9 +82,11 @@ class ReservationRequest(BaseModel):
 def create_app(
     store: OfferStore | None = None,
     reservation_service: ReservationService | None = None,
+    authenticator: Authenticator | None = None,
 ) -> FastAPI:
     offer_store = store or InMemoryOfferStore()
     reservations = reservation_service or ReservationService(offer_store)
+    identity = authenticator or DevelopmentAuthenticator()
     app = FastAPI(
         title="DER Flex Aggregation API",
         version=__version__,
@@ -87,9 +94,32 @@ def create_app(
     )
     app.state.offer_store = offer_store
     app.state.reservation_service = reservations
+    app.state.authenticator = identity
     metrics = MetricsRegistry()
     app.add_middleware(RequestBodyLimitMiddleware, max_bytes=32_768)
     app.add_middleware(StructuredLoggingMiddleware, metrics=metrics)
+
+    def require_access(scope: str):  # type: ignore[no-untyped-def]
+        def dependency(
+            authorization: Annotated[
+                str | None, Header(alias="Authorization")
+            ] = None,
+        ) -> AccessPrincipal:
+            token: str | None = None
+            if authorization is not None:
+                scheme, separator, value = authorization.partition(" ")
+                if separator and scheme.lower() == "bearer" and value:
+                    token = value
+                elif not isinstance(identity, DevelopmentAuthenticator):
+                    raise AuthenticationError("Authorization must use Bearer")
+            principal = identity.authenticate(token)
+            principal.require_scope(scope)
+            return principal
+
+        return dependency
+
+    def require_zone(principal: AccessPrincipal, zone_id: str) -> None:
+        principal.require_zone(zone_id)
 
     @app.exception_handler(RequestValidationError)
     async def validation_handler(
@@ -106,6 +136,22 @@ def create_app(
             for item in error.errors()
         ]
         return JSONResponse(status_code=422, content={"detail": details})
+
+    @app.exception_handler(AuthenticationError)
+    async def authentication_handler(
+        _request: Request, _error: AuthenticationError
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=401,
+            headers={"WWW-Authenticate": "Bearer"},
+            content={"detail": "authentication required"},
+        )
+
+    @app.exception_handler(AuthorizationError)
+    async def authorization_handler(
+        _request: Request, _error: AuthorizationError
+    ) -> JSONResponse:
+        return JSONResponse(status_code=404, content={"detail": "not found"})
 
     @app.exception_handler(InsufficientCapacity)
     @app.exception_handler(IdempotencyConflict)
@@ -150,15 +196,26 @@ def create_app(
         return PlainTextResponse(metrics.render_prometheus())
 
     @app.get("/api/v1/flexibility/zones")
-    def get_flexibility_zones() -> dict[str, list[str]]:
-        return {"data": offer_store.zones()}
+    def get_flexibility_zones(
+        principal: Annotated[
+            AccessPrincipal, Depends(require_access("flexibility:read"))
+        ],
+    ) -> dict[str, list[str]]:
+        zones = offer_store.zones()
+        if "*" not in principal.zone_ids:
+            zones = [zone for zone in zones if zone in principal.zone_ids]
+        return {"data": zones}
 
     @app.get("/api/v1/flexibility", response_model=FlexibilityResponse)
     def get_flexibility(
+        principal: Annotated[
+            AccessPrincipal, Depends(require_access("flexibility:read"))
+        ],
         zone_id: Annotated[str, Query(min_length=1, max_length=64)],
         start: Annotated[datetime, Query(alias="from")],
         end: Annotated[datetime, Query(alias="to")],
     ) -> FlexibilityResponse:
+        require_zone(principal, zone_id)
         if start.tzinfo is None or end.tzinfo is None:
             raise HTTPException(status_code=422, detail="from and to must include a timezone")
         if end <= start:
@@ -174,13 +231,17 @@ def create_app(
         status_code=status.HTTP_201_CREATED,
     )
     def create_reservation(
+        principal: Annotated[
+            AccessPrincipal, Depends(require_access("reservation:write"))
+        ],
         request: ReservationRequest,
         idempotency_key: Annotated[
             str, Header(alias="Idempotency-Key", min_length=1, max_length=128)
         ],
     ) -> Reservation:
+        require_zone(principal, request.zone_id)
         return reservations.create(
-            idempotency_key=idempotency_key,
+            idempotency_key=f"{principal.tenant_id}:{idempotency_key}",
             zone_id=request.zone_id,
             interval_start=request.interval_start,
             interval_end=request.interval_end,
@@ -191,22 +252,50 @@ def create_app(
         )
 
     @app.get("/api/v1/reservations/{reservation_id}", response_model=Reservation)
-    def get_reservation(reservation_id: UUID) -> Reservation:
-        return reservations.get(reservation_id)
+    def get_reservation(
+        reservation_id: UUID,
+        principal: Annotated[
+            AccessPrincipal, Depends(require_access("reservation:read"))
+        ],
+    ) -> Reservation:
+        reservation = reservations.get(reservation_id)
+        require_zone(principal, reservation.zone_id)
+        return reservation
 
     @app.delete("/api/v1/reservations/{reservation_id}", response_model=Reservation)
-    def cancel_reservation(reservation_id: UUID) -> Reservation:
+    def cancel_reservation(
+        reservation_id: UUID,
+        principal: Annotated[
+            AccessPrincipal, Depends(require_access("reservation:write"))
+        ],
+    ) -> Reservation:
+        require_zone(principal, reservations.get(reservation_id).zone_id)
         return reservations.cancel(reservation_id)
 
     @app.post(
         "/api/v1/reservations/{reservation_id}/activate",
         response_model=Activation,
     )
-    def activate_reservation(reservation_id: UUID) -> Activation:
+    def activate_reservation(
+        reservation_id: UUID,
+        principal: Annotated[
+            AccessPrincipal, Depends(require_access("activation:write"))
+        ],
+    ) -> Activation:
+        require_zone(principal, reservations.get(reservation_id).zone_id)
         return reservations.activate(reservation_id)
 
     @app.get("/api/v1/activations/{activation_id}", response_model=Activation)
-    def get_activation(activation_id: UUID) -> Activation:
-        return reservations.get_activation(activation_id)
+    def get_activation(
+        activation_id: UUID,
+        principal: Annotated[
+            AccessPrincipal, Depends(require_access("activation:read"))
+        ],
+    ) -> Activation:
+        activation = reservations.get_activation(activation_id)
+        require_zone(
+            principal, reservations.get(activation.reservation_id).zone_id
+        )
+        return activation
 
     return app
