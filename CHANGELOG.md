@@ -5,6 +5,8 @@ semántico.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-25
+
 ### Added
 
 - Backend PostgreSQL opcional para reservas, asignaciones, idempotencia, activaciones,

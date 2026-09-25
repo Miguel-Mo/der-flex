@@ -1,6 +1,6 @@
 # Matriz de trazabilidad de auditoría
 
-Esta matriz corresponde a la verificación local de DER Flex 0.1.0. El manifiesto
+Esta matriz corresponde a la verificación local de DER Flex 0.2.0. El manifiesto
 normativo y procesable es `docs/traceability.json`; este documento sirve como índice
 para lectura humana. `scripts/verify_traceability.py` comprueba rutas, nodos pytest,
 estados, evidencias y la presencia de los diez claims originales.

@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "scope": "DER Flex 0.1.0 experimental local verification",
+  "scope": "DER Flex 0.2.0 experimental local verification",
   "claims": [
     {
       "id": "T01",
@@ -94,7 +94,7 @@
     },
     {
       "id": "PKG01",
-      "claim": "El contenedor instala un wheel autocontenido 0.1.0.",
+      "claim": "El contenedor instala un wheel autocontenido 0.2.0.",
       "status": "PASS_WITH_SCOPE_LIMIT",
       "implementation_paths": ["Dockerfile", "compose.yaml", ".github/workflows/ci.yml", "scripts/verify_container.py"],
       "test_nodes": ["tests/test_container_verification.py::test_container_probe_requires_installed_package_readiness_and_clean_dependencies"],
