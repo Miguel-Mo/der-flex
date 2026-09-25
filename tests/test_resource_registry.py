@@ -129,9 +129,7 @@ def test_registry_rejects_non_finite_physical_values(value: float) -> None:
         ("ramp_rate_kw_per_min", 100_000.01),
     ],
 )
-def test_registry_rejects_values_outside_operational_ceiling(
-    field: str, value: float
-) -> None:
+def test_registry_rejects_values_outside_operational_ceiling(field: str, value: float) -> None:
     battery = BatterySimulator()
     data = provisioned_battery(battery).model_dump()
     data[field] = value

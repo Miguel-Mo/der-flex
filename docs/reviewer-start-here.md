@@ -31,6 +31,10 @@ selectivamente `.py`, wheels o directorios anidados.
 8. Para OUT01 proporcione PostgreSQL real mediante `DER_FLEX_TEST_DATABASE_URL` y
    ejecute `python -m pytest -q source/tests/test_postgres_outbox.py` desde la raíz
    extraída. Sin esa ejecución, OUT01 debe permanecer `NOT_VERIFIABLE`.
+9. Para AUTH01 ejecute `tests/test_oidc_security.py` y
+   `tests/test_api_authorization.py`; pruebe también la matriz completa con PostgreSQL.
+   No sustituya firma, emisor, audiencia, tiempo, tenant y rotación por inspección
+   narrativa ni confunda claves RSA locales con certificación de un IdP operativo.
 
 ## Comprobación offline mínima
 
@@ -51,6 +55,7 @@ En Linux x86-64 sustituya el ejecutable por `.review-venv/bin/python`.
 ## Alcance honesto
 
 El objetivo verificable es una publicación experimental. Docker, firma/tag públicos,
-esquema oficial OpenADR, laboratorios externos, autenticación, aislamiento multi-tenant
-y administración segura no se declaran completados. El uso con datos o DER reales continúa en
-`NO-GO`.
+esquema oficial OpenADR, laboratorios externos y certificación de un IdP operativo no
+se declaran completados. Autenticación OIDC, ámbitos y aislamiento multi-tenant sí se
+declaran implementados localmente bajo AUTH01. El uso con datos o DER reales continúa
+en `NO-GO` por los hitos posteriores todavía abiertos.

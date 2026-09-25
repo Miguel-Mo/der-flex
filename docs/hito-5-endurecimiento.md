@@ -67,7 +67,7 @@ sequenceDiagram
 | Fuzzing determinista | 1.205 entradas por ejecución sin errores internos ni fuga de identificadores |
 | Mutación dirigida | 6/6 mutantes eliminados, puntuación 100 % |
 | Trazabilidad | 17 claims y referencias resueltas automáticamente |
-| Instalación offline | 21 wheels, 18 componentes, hashes obligatorios y `pip check` limpio |
+| Instalación offline | 27 wheels, 22 componentes, hashes obligatorios y `pip check` limpio |
 | Bundle de revisión | ZIP determinista; alteraciones y archivos inesperados detectados |
 | Sesión S2 | 16 mensajes wire validados |
 | `pip check` | sin requisitos rotos |

@@ -12,7 +12,7 @@ procedencia. No uses resultados narrados para sustituir una ejecución que sí p
 realizar.
 
 Después revisa los claims T01, T02, P01, P02, PR01, C01, S01, PERF01, SEC01 y PKG01,
-además de ORD01, PHY01, FZ01, MT01, SBOM01, OFF01, OUT01 y BND01. Para cada uno comunica:
+además de ORD01, PHY01, FZ01, MT01, SBOM01, OFF01, OUT01, BND01 y AUTH01. Para cada uno comunica:
 
 - `PASS`, `PASS_WITH_SCOPE_LIMIT`, `FAIL` o `NOT_VERIFIABLE`;
 - pruebas y comandos realmente ejecutados;
@@ -63,6 +63,16 @@ Presta atención especial a los cambios y regresiones de este corte:
    expone un hash de snapshot; confirma que el expediente lo declara como no
    disponible y no inventa una garantía histórica.
 
+4. **Identidad y aislamiento AUTH01.** No aceptes los tokens estáticos como evidencia
+   de producción. Ejecuta la suite OIDC con claves RSA y dos `kid`; intenta tokens
+   caducados, prematuros, firmados con clave desconocida, con emisor/audiencia falsos,
+   sin tenant y con comodines. Recorre la matriz rol×endpoint y prueba escalada vertical,
+   zona ajena y UUID de otro tenant. Confirma que un despliegue con PostgreSQL no arranca
+   sin `DER_FLEX_AUTH_MODE` explícito, que OpenAPI declara Bearer y que los eventos de
+   rechazo contienen solo decisión, motivo, método y plantilla de ruta: nunca token,
+   sujeto, tenant, zona, UUID, payload ni telemetría. Separa la verificación local de
+   una integración/certificación con un IdP real, que no se reclama.
+
 No conviertas validación con parsers en certificación protocolaria. No conviertas un
 `RLock` en garantía multiproceso. No conviertas un benchmark ASGI local en SLO de
 producción. No conviertas una consulta puntual de vulnerabilidades en garantía futura.
@@ -85,7 +95,7 @@ límite de reproducibilidad de imagen, separado de la validez funcional de PKG01
 Finaliza con dos decisiones separadas: publicación experimental y uso con DER/datos
 reales. Enumera primero los hallazgos nuevos por severidad y después los límites ya
 declarados, para no presentar estos últimos como descubrimientos. Incluye una tabla
-de los 18 claims y una sección específica que diga si el anterior hallazgo medio de
+de los 19 claims y una sección específica que diga si el anterior hallazgo medio de
 compresión cross-OS queda `RESOLVED`, `PARTIAL` o `OPEN`, con la evidencia que sustenta
    esa decisión. El wheel ya coincidió en una reconstrucción Linux de v4.2. Comprueba
    específicamente si ha desaparecido el vector restante encontrado allí: modos

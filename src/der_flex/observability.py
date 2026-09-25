@@ -143,5 +143,6 @@ class StructuredLoggingMiddleware:
                 )
             )
 
+
 async def _empty_receive() -> Message:
     return {"type": "http.request", "body": b"", "more_body": False}

@@ -17,6 +17,7 @@ services:
     build: .
     environment:
       DER_FLEX_DATABASE_URL: postgresql://der_flex:der_flex_local@postgres:5432/der_flex
+      DER_FLEX_AUTH_MODE: ${DER_FLEX_AUTH_MODE:-development}
       DER_FLEX_WEBHOOK_SECRET: ${DER_FLEX_WEBHOOK_SECRET:-der-flex-local-only-change-me}
     depends_on:
       postgres:

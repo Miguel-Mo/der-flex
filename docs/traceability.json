@@ -154,7 +154,7 @@
     },
     {
       "id": "OFF01",
-      "claim": "El wheel y sus 18 dependencias se instalan sin índice en una venv nueva con hashes obligatorios.",
+      "claim": "El wheel y sus 22 dependencias se instalan sin índice en una venv nueva con hashes obligatorios.",
       "status": "PASS_WITH_SCOPE_LIMIT",
       "implementation_paths": ["requirements-runtime.lock", "vendor/wheelhouse/fastapi-0.141.1-py3-none-any.whl", "scripts/verify_release.py"],
       "test_nodes": ["tests/test_release_verification.py::test_wheelhouse_matches_runtime_lock_and_supported_platforms", "tests/test_release_verification.py::test_wheelhouse_rejects_a_tampered_lock"],
@@ -181,6 +181,16 @@
       "commands": ["python scripts/build_review_bundle.py", "python verify_bundle.py"],
       "evidence_outputs": ["source-manifest.json", "SHA256SUMS", "evidence.json", "offline-provenance.json"],
       "residual_limit": "La procedencia offline demuestra integridad, no autoría; la suite de desarrollo puede requerir red y solo el runtime está vendorizado."
+    },
+    {
+      "id": "AUTH01",
+      "claim": "Todas las rutas de negocio verifican identidad OIDC y aíslan ámbito, tenant y zona; toda denegación se audita sin datos sensibles.",
+      "status": "PASS_WITH_SCOPE_LIMIT",
+      "implementation_paths": ["src/der_flex/security.py", "src/der_flex/security_audit.py", "src/der_flex/api/app.py", "docs/adr/009-api-auth-boundary.md"],
+      "test_nodes": ["tests/test_oidc_security.py::test_oidc_accepts_scoped_tenant_identity_and_rotated_key", "tests/test_oidc_security.py::test_oidc_rejects_unknown_key_missing_token_and_insecure_configuration", "tests/test_api_authorization.py::test_cross_tenant_reservation_uuid_is_hidden", "tests/test_api_authorization.py::test_security_audit_uses_route_template_and_never_records_credentials_or_uuid"],
+      "commands": ["python -m pytest -q tests/test_oidc_security.py tests/test_api_authorization.py", "python -m pytest -q"],
+      "evidence_outputs": ["evidence.json", "traceability-report.json"],
+      "residual_limit": "Verificación criptográfica reproducida con claves RSA rotadas localmente; la integración con el proveedor OIDC operativo pertenece al despliegue y no se afirma como certificada."
     }
   ]
 }

@@ -21,9 +21,7 @@ class OfferStore(Protocol):
 
     def upsert(self, offer: FlexibilityOffer) -> None: ...
 
-    def remove_resource(
-        self, resource_id: str, *, tenant_id: str = "development"
-    ) -> int: ...
+    def remove_resource(self, resource_id: str, *, tenant_id: str = "development") -> int: ...
 
     def zones(
         self, *, tenant_id: str = "development", now: datetime | None = None
@@ -65,9 +63,7 @@ class InMemoryOfferStore:
         self._published_cohorts: dict[
             tuple[str, str, datetime, datetime, ConsequenceType], frozenset[str]
         ] = {}
-        self._suppressed_cells: set[
-            tuple[str, str, datetime, datetime, ConsequenceType]
-        ] = set()
+        self._suppressed_cells: set[tuple[str, str, datetime, datetime, ConsequenceType]] = set()
 
     def upsert(self, offer: FlexibilityOffer) -> None:
         key = (
@@ -93,9 +89,7 @@ class InMemoryOfferStore:
                 and source_position is not None
                 and incoming_position <= source_position
             ):
-                raise StaleOfferError(
-                    "a disconnected resource must advance its source position"
-                )
+                raise StaleOfferError("a disconnected resource must advance its source position")
             if source_position is not None and incoming_position < source_position:
                 raise StaleOfferError(
                     f"offer position {incoming_position} is older than {source_position}"
@@ -136,9 +130,7 @@ class InMemoryOfferStore:
                 self._suppressed_cells.add(cell)
             self._offers[key] = offer
 
-    def remove_resource(
-        self, resource_id: str, *, tenant_id: str = "development"
-    ) -> int:
+    def remove_resource(self, resource_id: str, *, tenant_id: str = "development") -> int:
         with self._lock:
             keys = [
                 key
@@ -161,9 +153,7 @@ class InMemoryOfferStore:
                 self._disconnected_resources.add((tenant_id, resource_id))
             return len(keys)
 
-    def zones(
-        self, *, tenant_id: str = "development", now: datetime | None = None
-    ) -> list[str]:
+    def zones(self, *, tenant_id: str = "development", now: datetime | None = None) -> list[str]:
         current = now or datetime.now(UTC)
         counts: dict[str, set[str]] = defaultdict(set)
         with self._lock:
@@ -249,10 +239,7 @@ class InMemoryOfferStore:
                     published_tenant == tenant_id
                     and published_zone == zone_id
                     and published_consequence == consequence_type
-                    and (
-                        published_end == interval_start
-                        or interval_end == published_start
-                    )
+                    and (published_end == interval_start or interval_end == published_start)
                     and published_cohort != cohort
                     for (
                         published_tenant,
@@ -271,8 +258,7 @@ class InMemoryOfferStore:
                 )
                 confidence = (
                     sum(
-                        offer.confidence
-                        * (offer.upward_capacity_kw + offer.downward_capacity_kw)
+                        offer.confidence * (offer.upward_capacity_kw + offer.downward_capacity_kw)
                         for offer in offers
                     )
                     / total_weight

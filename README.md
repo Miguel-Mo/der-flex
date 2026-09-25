@@ -49,6 +49,12 @@ docker compose up --build
 El valor de `DER_FLEX_WEBHOOK_SECRET` debe configurarse fuera de la demo y ser idéntico
 en la API y todos los workers; el valor por defecto de Compose es solo local.
 
+Con PostgreSQL, `DER_FLEX_AUTH_MODE` es obligatorio: `oidc` exige además
+`DER_FLEX_OIDC_ISSUER`, `DER_FLEX_OIDC_AUDIENCE` y `DER_FLEX_OIDC_JWKS_URL`, todos con
+HTTPS. Compose declara conscientemente `development` para la demo local. Ese modo no
+debe usarse con DER ni datos reales. OIDC valida firma RSA, emisor, audiencia,
+caducidad, tenant, ámbitos y zonas, y admite rotación mediante `kid`/JWKS.
+
 Compose arranca PostgreSQL, la API y un worker de outbox, y configura la demo para persistir el registro físico,
 ofertas normalizadas, posiciones de sesión, cohortes públicas, reservas, asignaciones,
 claves idempotentes, activaciones, instrucciones, entregas pendientes y el estado de
@@ -81,7 +87,7 @@ las relaciones entre ellas y registra PURLs y hashes SHA-256 del metadato instal
 Los extras de desarrollo quedan fuera; el extra `ws` solicitado a S2 sí se incluye.
 La misma puerta ejecuta seis mutaciones dirigidas sobre controles críticos y exige que
 las pruebas maten todas antes de declarar el release local como válido.
-También crea una venv vacía e instala, con red deshabilitada para pip, el wheel y las 18
+También crea una venv vacía e instala, con red deshabilitada para pip, el wheel y las 22
 dependencias desde `vendor/wheelhouse` usando los hashes de `requirements-runtime.lock`.
 El wheelhouse cubre CPython 3.13 en Windows AMD64 y Linux x86-64.
 La instalación editable usa `requirements-runtime.constraints` para conservar ese mismo
@@ -135,5 +141,7 @@ entonces pasa a `COMPLETED` o `FAILED`. La entrega es *al menos una vez*, no exa
 una vez. El aceptador de recursos de la demo es sintético y debe sustituirse por un
 adaptador S2 real.
 
-Todavía faltan autenticación, aislamiento multi-tenant y administración segura; por
-tanto, esta rama no está preparada para DER o datos reales.
+La autenticación OIDC, los ámbitos y el aislamiento multi-tenant están implementados y
+probados localmente. Todavía faltan los hitos de privacidad formal, operación distribuida
+completa y validación protocolaria externa; por tanto, esta rama no está preparada para
+DER o datos reales.

@@ -52,9 +52,7 @@ def provision_and_normalize(
     registry: PostgresResourceRegistry,
 ) -> tuple[BatterySimulator, list[FlexibilityOffer]]:
     resource = BatterySimulator()
-    record = build_simulator_registry([resource]).require(
-        resource.resource_id, resource.zone_id
-    )
+    record = build_simulator_registry([resource]).require(resource.resource_id, resource.zone_id)
     registry.register(record)
     constraints, forecast = resource.s2_offer_messages(START)
     offers = normalize_pebc_offer(
@@ -102,9 +100,7 @@ def test_offer_order_conflicts_disconnect_and_privacy_survive_restart(
     assert store.query(resource.zone_id, START, END, now=START)
 
     with pytest.raises(OfferVersionConflict):
-        store.upsert(
-            offer.model_copy(update={"upward_capacity_kw": offer.upward_capacity_kw / 2})
-        )
+        store.upsert(offer.model_copy(update={"upward_capacity_kw": offer.upward_capacity_kw / 2}))
 
     advanced = offer.model_copy(
         update={
@@ -138,9 +134,7 @@ def test_registry_preserves_monotonic_operator_versions(
     with pytest.raises(StaleProvisioningRecord):
         registry.register(current.model_copy(update={"provisioning_version": 0}))
 
-    updated = current.model_copy(
-        update={"provisioning_version": 2, "enabled": False}
-    )
+    updated = current.model_copy(update={"provisioning_version": 2, "enabled": False})
     registry.register(updated)
     assert DATABASE_URL is not None
     restarted = PostgresResourceRegistry(DATABASE_URL)
@@ -167,13 +161,16 @@ def test_reprovisioning_revokes_old_offers_and_suppresses_published_cell(
         )
     )
 
-    assert store.eligible_offers(
-        zone_id=resource.zone_id,
-        interval_start=START,
-        interval_end=END,
-        consequence_type=offers[0].consequence_type,
-        now=START,
-    ) == []
+    assert (
+        store.eligible_offers(
+            zone_id=resource.zone_id,
+            interval_start=START,
+            interval_end=END,
+            consequence_type=offers[0].consequence_type,
+            now=START,
+        )
+        == []
+    )
     assert store.query(resource.zone_id, START, END, now=START) == []
     with pytest.raises(StaleOfferError):
         store.upsert(offers[0])
@@ -244,15 +241,12 @@ def test_offer_update_waits_for_reservation_product_lock(
             "source_version": f"{offer.source_version}-locked",
         }
     )
-    lock_key = (
-        f"tenant:{offer.tenant_id}:"
-        + product_lock_key(
-            offer.zone_id,
-            offer.interval_start,
-            offer.interval_end,
-            offer.consequence_type,
-            "UPWARD",
-        )
+    lock_key = f"tenant:{offer.tenant_id}:" + product_lock_key(
+        offer.zone_id,
+        offer.interval_start,
+        offer.interval_end,
+        offer.consequence_type,
+        "UPWARD",
     )
     started = Event()
 

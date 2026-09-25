@@ -182,8 +182,10 @@ fallos auditable, sin efectos duplicados en un receptor idempotente.
 
 ## Hito 15 — Autenticación, autorización y aislamiento multiempresa
 
-**Estado:** en curso. La frontera inyectable, los ámbitos y la persistencia/partición
-por `tenant_id` están implementados; falta verificar identidad OIDC y auditar rechazos.
+**Estado:** completado localmente. OIDC/JWT con JWKS rotatorio, ámbitos separados,
+partición persistente por `tenant_id`, arranque seguro y auditoría mínima de rechazos
+están implementados y cubiertos por pruebas. Pendiente únicamente la auditoría externa
+que se realizará al cerrar el hito completo.
 
 **Problema a resolver:** cualquier cliente de red puede consultar agregados o reservar
 capacidad y no existe una frontera de tenant.

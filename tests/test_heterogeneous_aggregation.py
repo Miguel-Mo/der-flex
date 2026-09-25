@@ -117,9 +117,7 @@ def test_adjacent_cell_is_suppressed_when_participant_cohort_changes() -> None:
     constraints, forecast = resources[0].s2_offer_messages(END)
     replacement_id = f"{resources[0].resource_id}-replacement"
     resource_registry = build_simulator_registry([resources[0]])
-    original_record = resource_registry.require(
-        resources[0].resource_id, resources[0].zone_id
-    )
+    original_record = resource_registry.require(resources[0].resource_id, resources[0].zone_id)
     resource_registry.register(original_record.model_copy(update={"resource_id": replacement_id}))
     replacement = normalize_pebc_offer(
         resource_id=replacement_id,

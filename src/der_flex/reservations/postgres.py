@@ -298,9 +298,7 @@ class PostgresReservationUnitOfWork:
         ).fetchall()
         return tuple(Allocation(**row) for row in rows)
 
-    def reserved_for_offer(
-        self, offer: FlexibilityOffer, direction: FlexibilityDirection
-    ) -> float:
+    def reserved_for_offer(self, offer: FlexibilityOffer, direction: FlexibilityDirection) -> float:
         row = self.connection.execute(
             """
             SELECT COALESCE(SUM(a.power_kw), 0.0) AS reserved
@@ -696,11 +694,7 @@ class PostgresReservationBackend:
                 """,
                 (task.event_id,),
             ).fetchone()
-            if (
-                row is None
-                or row["status"] != "PROCESSING"
-                or row["attempts"] != task.attempts
-            ):
+            if row is None or row["status"] != "PROCESSING" or row["attempts"] != task.attempts:
                 return
 
             terminal = delivered or not retryable or row["attempts"] >= max_attempts

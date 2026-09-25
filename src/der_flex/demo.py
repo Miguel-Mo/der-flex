@@ -16,6 +16,7 @@ from der_flex.domain import (
     ResourceRegistry,
 )
 from der_flex.reservations import PostgresReservationBackend, ReservationService
+from der_flex.security import authenticator_from_environment
 from der_flex.simulators import build_demo_fleet, build_simulator_registry
 
 
@@ -62,7 +63,11 @@ def build_demo_app() -> FastAPI:
         reservation_service = ReservationService(store, backend=backend)
     else:
         reservation_service = ReservationService(store)
-    app = create_app(store, reservation_service)
+    app = create_app(
+        store,
+        reservation_service,
+        authenticator=authenticator_from_environment(production=database_url is not None),
+    )
     app.state.demo_interval = (start, start + timedelta(hours=1))
     return app
 

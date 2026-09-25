@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, model_validator
 
 from der_flex import __version__
@@ -35,6 +36,11 @@ from der_flex.security import (
     Authenticator,
     AuthorizationError,
     DevelopmentAuthenticator,
+)
+from der_flex.security_audit import (
+    LoggingSecurityAuditRecorder,
+    SecurityAuditEvent,
+    SecurityAuditRecorder,
 )
 
 
@@ -83,10 +89,12 @@ def create_app(
     store: OfferStore | None = None,
     reservation_service: ReservationService | None = None,
     authenticator: Authenticator | None = None,
+    security_audit: SecurityAuditRecorder | None = None,
 ) -> FastAPI:
     offer_store = store or InMemoryOfferStore()
     reservations = reservation_service or ReservationService(offer_store)
     identity = authenticator or DevelopmentAuthenticator()
+    audit = security_audit or LoggingSecurityAuditRecorder()
     app = FastAPI(
         title="DER Flex Aggregation API",
         version=__version__,
@@ -95,23 +103,24 @@ def create_app(
     app.state.offer_store = offer_store
     app.state.reservation_service = reservations
     app.state.authenticator = identity
+    app.state.security_audit = audit
     metrics = MetricsRegistry()
+    bearer_scheme = HTTPBearer(auto_error=False, bearerFormat="JWT")
     app.add_middleware(RequestBodyLimitMiddleware, max_bytes=32_768)
     app.add_middleware(StructuredLoggingMiddleware, metrics=metrics)
 
     def require_access(scope: str):  # type: ignore[no-untyped-def]
         def dependency(
-            authorization: Annotated[
-                str | None, Header(alias="Authorization")
-            ] = None,
+            credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
+            authorization: Annotated[str | None, Header(alias="Authorization")] = None,
         ) -> AccessPrincipal:
-            token: str | None = None
-            if authorization is not None:
-                scheme, separator, value = authorization.partition(" ")
-                if separator and scheme.lower() == "bearer" and value:
-                    token = value
-                elif not isinstance(identity, DevelopmentAuthenticator):
-                    raise AuthenticationError("Authorization must use Bearer")
+            token = credentials.credentials if credentials is not None else None
+            if (
+                authorization is not None
+                and credentials is None
+                and not isinstance(identity, DevelopmentAuthenticator)
+            ):
+                raise AuthenticationError("invalid_authorization_scheme")
             principal = identity.authenticate(token)
             principal.require_scope(scope)
             return principal
@@ -122,9 +131,7 @@ def create_app(
         principal.require_zone(zone_id)
 
     @app.exception_handler(RequestValidationError)
-    async def validation_handler(
-        _request: Request, error: RequestValidationError
-    ) -> JSONResponse:
+    async def validation_handler(_request: Request, error: RequestValidationError) -> JSONResponse:
         # Never reflect invalid raw values: NaN/Infinity are not JSON serializable and
         # request bodies may contain sensitive data.
         details = [
@@ -138,9 +145,8 @@ def create_app(
         return JSONResponse(status_code=422, content={"detail": details})
 
     @app.exception_handler(AuthenticationError)
-    async def authentication_handler(
-        _request: Request, _error: AuthenticationError
-    ) -> JSONResponse:
+    async def authentication_handler(request: Request, error: AuthenticationError) -> JSONResponse:
+        audit.record(_audit_event(request, error.code))
         return JSONResponse(
             status_code=401,
             headers={"WWW-Authenticate": "Bearer"},
@@ -148,9 +154,8 @@ def create_app(
         )
 
     @app.exception_handler(AuthorizationError)
-    async def authorization_handler(
-        _request: Request, _error: AuthorizationError
-    ) -> JSONResponse:
+    async def authorization_handler(request: Request, error: AuthorizationError) -> JSONResponse:
+        audit.record(_audit_event(request, error.code))
         return JSONResponse(status_code=404, content={"detail": "not found"})
 
     @app.exception_handler(InsufficientCapacity)
@@ -195,11 +200,15 @@ def create_app(
     def get_metrics() -> PlainTextResponse:
         return PlainTextResponse(metrics.render_prometheus())
 
+    @app.get("/api/v1/admin/security/status")
+    def get_security_status(
+        _principal: Annotated[AccessPrincipal, Depends(require_access("admin:read"))],
+    ) -> dict[str, str]:
+        return {"status": "configured", "authenticator": type(identity).__name__}
+
     @app.get("/api/v1/flexibility/zones")
     def get_flexibility_zones(
-        principal: Annotated[
-            AccessPrincipal, Depends(require_access("flexibility:read"))
-        ],
+        principal: Annotated[AccessPrincipal, Depends(require_access("flexibility:read"))],
     ) -> dict[str, list[str]]:
         zones = offer_store.zones(tenant_id=principal.tenant_id)
         if "*" not in principal.zone_ids:
@@ -208,9 +217,7 @@ def create_app(
 
     @app.get("/api/v1/flexibility", response_model=FlexibilityResponse)
     def get_flexibility(
-        principal: Annotated[
-            AccessPrincipal, Depends(require_access("flexibility:read"))
-        ],
+        principal: Annotated[AccessPrincipal, Depends(require_access("flexibility:read"))],
         zone_id: Annotated[str, Query(min_length=1, max_length=64)],
         start: Annotated[datetime, Query(alias="from")],
         end: Annotated[datetime, Query(alias="to")],
@@ -222,9 +229,7 @@ def create_app(
             raise HTTPException(status_code=422, detail="to must be after from")
         if end - start > timedelta(days=7):
             raise HTTPException(status_code=422, detail="query window cannot exceed seven days")
-        aggregates = offer_store.query(
-            zone_id, start, end, tenant_id=principal.tenant_id
-        )
+        aggregates = offer_store.query(zone_id, start, end, tenant_id=principal.tenant_id)
         return FlexibilityResponse(data=reservations.public_residual_capacity(aggregates))
 
     @app.post(
@@ -233,9 +238,7 @@ def create_app(
         status_code=status.HTTP_201_CREATED,
     )
     def create_reservation(
-        principal: Annotated[
-            AccessPrincipal, Depends(require_access("reservation:write"))
-        ],
+        principal: Annotated[AccessPrincipal, Depends(require_access("reservation:write"))],
         request: ReservationRequest,
         idempotency_key: Annotated[
             str, Header(alias="Idempotency-Key", min_length=1, max_length=128)
@@ -257,9 +260,7 @@ def create_app(
     @app.get("/api/v1/reservations/{reservation_id}", response_model=Reservation)
     def get_reservation(
         reservation_id: UUID,
-        principal: Annotated[
-            AccessPrincipal, Depends(require_access("reservation:read"))
-        ],
+        principal: Annotated[AccessPrincipal, Depends(require_access("reservation:read"))],
     ) -> Reservation:
         reservation = reservations.get(reservation_id)
         principal.require_tenant(reservation.tenant_id)
@@ -269,9 +270,7 @@ def create_app(
     @app.delete("/api/v1/reservations/{reservation_id}", response_model=Reservation)
     def cancel_reservation(
         reservation_id: UUID,
-        principal: Annotated[
-            AccessPrincipal, Depends(require_access("reservation:write"))
-        ],
+        principal: Annotated[AccessPrincipal, Depends(require_access("reservation:write"))],
     ) -> Reservation:
         reservation = reservations.get(reservation_id)
         principal.require_tenant(reservation.tenant_id)
@@ -284,9 +283,7 @@ def create_app(
     )
     def activate_reservation(
         reservation_id: UUID,
-        principal: Annotated[
-            AccessPrincipal, Depends(require_access("activation:write"))
-        ],
+        principal: Annotated[AccessPrincipal, Depends(require_access("activation:write"))],
     ) -> Activation:
         reservation = reservations.get(reservation_id)
         principal.require_tenant(reservation.tenant_id)
@@ -296,9 +293,7 @@ def create_app(
     @app.get("/api/v1/activations/{activation_id}", response_model=Activation)
     def get_activation(
         activation_id: UUID,
-        principal: Annotated[
-            AccessPrincipal, Depends(require_access("activation:read"))
-        ],
+        principal: Annotated[AccessPrincipal, Depends(require_access("activation:read"))],
     ) -> Activation:
         activation = reservations.get_activation(activation_id)
         reservation = reservations.get(activation.reservation_id)
@@ -307,3 +302,14 @@ def create_app(
         return activation
 
     return app
+
+
+def _audit_event(request: Request, reason: str) -> SecurityAuditEvent:
+    route = request.scope.get("route")
+    route_template = getattr(route, "path", "unmatched")
+    return SecurityAuditEvent(
+        outcome="denied",
+        reason=reason,
+        method=request.method,
+        route=route_template,
+    )

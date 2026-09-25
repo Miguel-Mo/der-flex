@@ -1,6 +1,6 @@
 # ADR 009 — Frontera inicial de identidad y tenant en la API
 
-**Estado:** aceptada como incremento parcial, 25 de septiembre de 2026.
+**Estado:** aceptada y completada, 25 de septiembre de 2026.
 
 ## Contexto
 
@@ -16,18 +16,31 @@ ocultan zonas ajenas con `404`. Las claves de idempotencia se incluyen en el esp
 del tenant. La implementación estática usa comparación constante y exige propiedad de
 zona no solapada entre tenants.
 
+En ejecución persistente, el arranque exige seleccionar explícitamente `oidc` o
+`development`. El modo OIDC valida firmas RSA mediante JWKS rotatorio, algoritmo fijado
+por configuración, emisor, audiencia, `exp`, `iat`, `sub` y `tenant_id`. Los ámbitos y
+zonas proceden de claims verificados. La especificación OpenAPI declara autenticación
+Bearer en todas las rutas de negocio.
+
 El modo de desarrollo sigue siendo explícitamente mono-tenant y permisivo para no
 convertir la demo en un sistema de identidades ficticio. No se presenta como despliegue
 seguro.
 
-## Consecuencias y trabajo pendiente
+Cada denegación de autenticación o autorización genera un evento mínimo con decisión,
+motivo, método y plantilla de ruta. No registra token, sujeto, tenant, zona, UUID,
+payload ni telemetría doméstica.
+
+## Consecuencias
 
 - Esta frontera permite probar la matriz rol×endpoint sin acoplar FastAPI a un proveedor.
 - `tenant_id` se conserva en recursos, ofertas, reservas, agregados internos y estado de
   privacidad; la capacidad, los locks y la idempotencia se particionan por tenant.
 - Las activaciones heredan su frontera de la reserva y no exponen una ruta sin comprobar
   antes el tenant propietario.
-- Falta un verificador OIDC/JWT con emisor, audiencia, caducidad, rotación y claves
-  públicas. Los tokens estáticos no cierran el hito 15.
-- Autenticación administrativa, auditoría de rechazos y gestión segura de secretos siguen
-  pendientes. Por tanto, el veredicto para DER o datos reales continúa siendo `NO-GO`.
+- La ruta administrativa de estado usa el ámbito separado `admin:read`; lectura,
+  reserva y activación conservan ámbitos independientes.
+- El modo estático queda limitado a pruebas; la demo local debe declarar conscientemente
+  `development` si usa PostgreSQL.
+- El hito 15 queda cerrado. Persistencia durable, atomicidad multiproceso, privacidad
+  formal y validación protocolaria externa pertenecen a hitos posteriores, por lo que
+  el veredicto para DER o datos reales continúa siendo `NO-GO`.

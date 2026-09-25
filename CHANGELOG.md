@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Complete milestone 15 with RSA-signed OIDC/JWT verification, rotating JWKS keys,
+  issuer/audience/time validation and mandatory tenant identity.
+- Enforce independent read, reservation, activation and administration scopes across
+  every business route and declare Bearer authentication in OpenAPI.
+- Audit every authentication and authorization denial using route templates without
+  recording tokens, identities, tenant/zone identifiers, UUIDs, payloads or telemetry.
+- Persist and partition resources, offers, reservations, capacity, privacy state and
+  idempotency by tenant across memory and PostgreSQL backends.
+
 Los cambios notables se documentan aquí siguiendo Keep a Changelog y versionado
 semántico.
 

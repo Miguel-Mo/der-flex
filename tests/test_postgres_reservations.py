@@ -71,9 +71,7 @@ def reserve(service: ReservationService, key: str, power_kw: float = 30.0) -> st
         return "rejected"
 
 
-def process_reserve(
-    database_url: str, key: str, start_event: Any, results: Any
-) -> None:
+def process_reserve(database_url: str, key: str, start_event: Any, results: Any) -> None:
     service = ReservationService(
         build_offer_store(), backend=PostgresReservationBackend(database_url)
     )
@@ -136,12 +134,8 @@ def test_schema_records_migration_and_database_invariants(
 def test_tenants_have_independent_capacity_and_idempotency(
     postgres_backend: PostgresReservationBackend,
 ) -> None:
-    tenant_a = ReservationService(
-        build_offer_store("tenant-a"), backend=postgres_backend
-    )
-    tenant_b = ReservationService(
-        build_offer_store("tenant-b"), backend=postgres_backend
-    )
+    tenant_a = ReservationService(build_offer_store("tenant-a"), backend=postgres_backend)
+    tenant_b = ReservationService(build_offer_store("tenant-b"), backend=postgres_backend)
 
     first = tenant_a.create(
         tenant_id="tenant-a",
@@ -167,9 +161,9 @@ def test_tenants_have_independent_capacity_and_idempotency(
     assert second.tenant_id == "tenant-b"
     assert DATABASE_URL is not None
     restarted = PostgresReservationBackend(DATABASE_URL)
-    loaded = ReservationService(
-        build_offer_store("tenant-a"), backend=restarted
-    ).get(first.reservation_id)
+    loaded = ReservationService(build_offer_store("tenant-a"), backend=restarted).get(
+        first.reservation_id
+    )
     assert loaded.tenant_id == "tenant-a"
 
 
@@ -288,12 +282,9 @@ def test_expiry_and_privacy_suppression_survive_restart(
     restarted = ReservationService(
         restarted_store, backend=PostgresReservationBackend(DATABASE_URL)
     )
-    assert restarted.public_residual_capacity(
-        restarted_store.query(ZONES[0], START, END)
-    ) == []
-    assert restarted.get(
-        created.reservation_id, now=created_at + timedelta(minutes=6)
-    ).status == "EXPIRED"
-    assert restarted.public_residual_capacity(
-        restarted_store.query(ZONES[0], START, END)
-    ) == []
+    assert restarted.public_residual_capacity(restarted_store.query(ZONES[0], START, END)) == []
+    assert (
+        restarted.get(created.reservation_id, now=created_at + timedelta(minutes=6)).status
+        == "EXPIRED"
+    )
+    assert restarted.public_residual_capacity(restarted_store.query(ZONES[0], START, END)) == []

@@ -360,9 +360,7 @@ class PostgresOfferStore(_PostgresDomainBase):
                 and source_position is not None
                 and incoming_position <= source_position
             ):
-                raise StaleOfferError(
-                    "a disconnected resource must advance its source position"
-                )
+                raise StaleOfferError("a disconnected resource must advance its source position")
             if source_position is not None and incoming_position < source_position:
                 raise StaleOfferError(
                     f"offer position {incoming_position} is older than {source_position}"
@@ -471,9 +469,7 @@ class PostgresOfferStore(_PostgresDomainBase):
                 ),
             )
 
-    def remove_resource(
-        self, resource_id: str, *, tenant_id: str = "development"
-    ) -> int:
+    def remove_resource(self, resource_id: str, *, tenant_id: str = "development") -> int:
         with self._transaction(("offer-store",)) as connection:
             rows = connection.execute(
                 "SELECT * FROM der_flex_offers WHERE resource_id = %s AND tenant_id = %s",
@@ -496,9 +492,7 @@ class PostgresOfferStore(_PostgresDomainBase):
                 )
             return len(rows)
 
-    def zones(
-        self, *, tenant_id: str = "development", now: datetime | None = None
-    ) -> list[str]:
+    def zones(self, *, tenant_id: str = "development", now: datetime | None = None) -> list[str]:
         current = now or datetime.now(UTC)
         with self._connect() as connection:
             rows = connection.execute(
@@ -564,14 +558,14 @@ class PostgresOfferStore(_PostgresDomainBase):
                 """,
                 (tenant_id, zone_id, generated_at, start, end),
             ).fetchall()
-            groups: dict[
-                tuple[datetime, datetime, ConsequenceType], list[FlexibilityOffer]
-            ] = defaultdict(list)
+            groups: dict[tuple[datetime, datetime, ConsequenceType], list[FlexibilityOffer]] = (
+                defaultdict(list)
+            )
             for row in rows:
                 offer = _offer(row)
-                groups[
-                    (offer.interval_start, offer.interval_end, offer.consequence_type)
-                ].append(offer)
+                groups[(offer.interval_start, offer.interval_end, offer.consequence_type)].append(
+                    offer
+                )
             published_rows = connection.execute(
                 """
                 SELECT * FROM der_flex_published_cohorts
@@ -628,8 +622,7 @@ class PostgresOfferStore(_PostgresDomainBase):
                 )
                 confidence = (
                     sum(
-                        item.confidence
-                        * (item.upward_capacity_kw + item.downward_capacity_kw)
+                        item.confidence * (item.upward_capacity_kw + item.downward_capacity_kw)
                         for item in offers
                     )
                     / total_weight
@@ -649,9 +642,7 @@ class PostgresOfferStore(_PostgresDomainBase):
                         downward_capacity_kw=round(
                             sum(item.downward_capacity_kw for item in offers), 6
                         ),
-                        upward_energy_kwh=round(
-                            sum(item.upward_energy_kwh for item in offers), 6
-                        ),
+                        upward_energy_kwh=round(sum(item.upward_energy_kwh for item in offers), 6),
                         downward_energy_kwh=round(
                             sum(item.downward_energy_kwh for item in offers), 6
                         ),

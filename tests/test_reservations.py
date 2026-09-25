@@ -47,9 +47,7 @@ def build_service() -> tuple[InMemoryOfferStore, ReservationService]:
     return store, ReservationService(store)
 
 
-def reserve(
-    service: ReservationService, key: str, power_kw: float = 10.0
-) -> Reservation:
+def reserve(service: ReservationService, key: str, power_kw: float = 10.0) -> Reservation:
     return service.create(
         idempotency_key=key,
         zone_id=ZONES[0],
@@ -136,9 +134,7 @@ def test_concurrent_reservations_cannot_double_sell_capacity() -> None:
     assert sorted(outcomes) == ["confirmed", "rejected"]
 
 
-@pytest.mark.parametrize(
-    "power_kw", [float("nan"), float("inf"), float("-inf"), 1_000_000.01]
-)
+@pytest.mark.parametrize("power_kw", [float("nan"), float("inf"), float("-inf"), 1_000_000.01])
 def test_reservation_service_rejects_non_finite_or_absurd_power(power_kw: float) -> None:
     _, service = build_service()
 

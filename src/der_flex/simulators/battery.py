@@ -71,9 +71,7 @@ class BatterySimulator:
     def advance(self, minutes: int = 15) -> None:
         energy_delta = self.power_kw * (minutes / 60)
         next_soc = self.state_of_charge + energy_delta / self.capacity_kwh
-        bounded_soc = max(
-            self.min_state_of_charge, min(self.max_state_of_charge, next_soc)
-        )
+        bounded_soc = max(self.min_state_of_charge, min(self.max_state_of_charge, next_soc))
         if bounded_soc != self.state_of_charge:
             self.source_sequence += 1
         self.state_of_charge = bounded_soc
@@ -99,9 +97,7 @@ class BatterySimulator:
             self.max_charge_kw if self.state_of_charge < self.max_state_of_charge else 0.0
         )
         discharge_limit = (
-            self.max_discharge_kw
-            if self.state_of_charge > self.min_state_of_charge
-            else 0.0
+            self.max_discharge_kw if self.state_of_charge > self.min_state_of_charge else 0.0
         )
         boundary = {
             "start_of_range": -discharge_limit * 1000,
@@ -138,9 +134,7 @@ class BatterySimulator:
                 self.max_charge_kw,
                 (self.maximum_energy_kwh - forecast_energy_kwh) / interval_hours,
             )
-            forecast_power_kw = max(
-                minimum_power_kw, min(maximum_power_kw, self.power_kw)
-            )
+            forecast_power_kw = max(minimum_power_kw, min(maximum_power_kw, self.power_kw))
             forecast_elements.append(
                 {
                     "duration": 900_000,

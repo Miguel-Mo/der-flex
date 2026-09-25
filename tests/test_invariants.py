@@ -113,13 +113,9 @@ def test_random_physical_envelopes_are_never_exceeded() -> None:
 
         tolerance_kw = 1e-9
         assert (
-            offer.baseline_power_kw - offer.upward_capacity_kw
-            >= -maximum_discharge - tolerance_kw
+            offer.baseline_power_kw - offer.upward_capacity_kw >= -maximum_discharge - tolerance_kw
         )
-        assert (
-            offer.baseline_power_kw + offer.downward_capacity_kw
-            <= maximum_charge + tolerance_kw
-        )
+        assert offer.baseline_power_kw + offer.downward_capacity_kw <= maximum_charge + tolerance_kw
 
 
 def test_reservation_burst_never_oversells_or_makes_residual_negative() -> None:
@@ -148,9 +144,7 @@ def test_reservation_burst_never_oversells_or_makes_residual_negative() -> None:
     with ThreadPoolExecutor(max_workers=16) as executor:
         allocated = list(executor.map(attempt, range(100)))
 
-    residual = service.apply_residual_capacity(
-        store.query(ZONES[0], START, END, now=START)
-    )[0]
+    residual = service.apply_residual_capacity(store.query(ZONES[0], START, END, now=START))[0]
     assert sum(allocated) <= offered
     assert residual.upward_capacity_kw >= 0
     assert residual.upward_capacity_kw == round(offered - sum(allocated), 6)
@@ -171,9 +165,7 @@ def test_random_multi_interval_trajectories_respect_energy_and_ramp() -> None:
         forecast = deepcopy(forecast)
         baseline_energy = resource.stored_energy_kwh
         for element in forecast["elements"]:
-            desired_power = generator.uniform(
-                -resource.max_discharge_kw, resource.max_charge_kw
-            )
+            desired_power = generator.uniform(-resource.max_discharge_kw, resource.max_charge_kw)
             feasible_minimum = max(
                 -resource.max_discharge_kw,
                 (resource.minimum_energy_kwh - baseline_energy) / 0.25,
@@ -208,12 +200,8 @@ def test_random_multi_interval_trajectories_respect_energy_and_ramp() -> None:
         downward_energy = resource.stored_energy_kwh
         for offer in offers:
             hours = (offer.interval_end - offer.interval_start).total_seconds() / 3600
-            upward_energy += (
-                offer.baseline_power_kw - offer.upward_capacity_kw
-            ) * hours
-            downward_energy += (
-                offer.baseline_power_kw + offer.downward_capacity_kw
-            ) * hours
+            upward_energy += (offer.baseline_power_kw - offer.upward_capacity_kw) * hours
+            downward_energy += (offer.baseline_power_kw + offer.downward_capacity_kw) * hours
             assert upward_energy >= resource.minimum_energy_kwh - 1e-9
             assert downward_energy <= resource.maximum_energy_kwh + 1e-9
             assert offer.upward_capacity_kw <= ramp_rate + 1e-9

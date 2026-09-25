@@ -329,9 +329,7 @@ class ReservationService:
                     for event in ("activation.accepted", "activation.started"):
                         state.enqueue_outbox(
                             OutboxTask(
-                                event_id=self._outbox_event_id(
-                                    activation_id, f"webhook:{event}"
-                                ),
+                                event_id=self._outbox_event_id(activation_id, f"webhook:{event}"),
                                 kind="WEBHOOK",
                                 destination=callback_url,
                                 event_type=event,
@@ -347,9 +345,7 @@ class ReservationService:
                 ):
                     state.enqueue_outbox(
                         OutboxTask(
-                            event_id=self._outbox_event_id(
-                                activation_id, f"resource:{index}"
-                            ),
+                            event_id=self._outbox_event_id(activation_id, f"resource:{index}"),
                             kind="RESOURCE",
                             destination=allocation.resource_id,
                             event_type="pebc.instruction",
