@@ -23,6 +23,11 @@ from der_flex.observability import (
     RequestBodyLimitMiddleware,
     StructuredLoggingMiddleware,
 )
+from der_flex.privacy import (
+    PrivacyPublicationPolicy,
+    PrivacyQueryBudgetExceeded,
+    PrivacyQueryRejected,
+)
 from der_flex.reservations import (
     IdempotencyConflict,
     InsufficientCapacity,
@@ -90,11 +95,13 @@ def create_app(
     reservation_service: ReservationService | None = None,
     authenticator: Authenticator | None = None,
     security_audit: SecurityAuditRecorder | None = None,
+    privacy_policy: PrivacyPublicationPolicy | None = None,
 ) -> FastAPI:
     offer_store = store or InMemoryOfferStore()
     reservations = reservation_service or ReservationService(offer_store)
     identity = authenticator or DevelopmentAuthenticator()
     audit = security_audit or LoggingSecurityAuditRecorder()
+    privacy = privacy_policy or PrivacyPublicationPolicy()
     app = FastAPI(
         title="DER Flex Aggregation API",
         version=__version__,
@@ -104,6 +111,7 @@ def create_app(
     app.state.reservation_service = reservations
     app.state.authenticator = identity
     app.state.security_audit = audit
+    app.state.privacy_policy = privacy
     metrics = MetricsRegistry()
     bearer_scheme = HTTPBearer(auto_error=False, bearerFormat="JWT")
     app.add_middleware(RequestBodyLimitMiddleware, max_bytes=32_768)
@@ -129,6 +137,14 @@ def create_app(
 
     def require_zone(principal: AccessPrincipal, zone_id: str) -> None:
         principal.require_zone(zone_id)
+
+    def consume_privacy_budget(principal: AccessPrincipal) -> datetime:
+        epoch = privacy.publication_epoch()
+        if not offer_store.consume_privacy_query(
+            principal.tenant_id, epoch, privacy.queries_per_interval
+        ):
+            raise PrivacyQueryBudgetExceeded
+        return epoch
 
     @app.exception_handler(RequestValidationError)
     async def validation_handler(_request: Request, error: RequestValidationError) -> JSONResponse:
@@ -157,6 +173,22 @@ def create_app(
     async def authorization_handler(request: Request, error: AuthorizationError) -> JSONResponse:
         audit.record(_audit_event(request, error.code))
         return JSONResponse(status_code=404, content={"detail": "not found"})
+
+    @app.exception_handler(PrivacyQueryRejected)
+    async def privacy_query_handler(request: Request, error: PrivacyQueryRejected) -> JSONResponse:
+        audit.record(_audit_event(request, error.code))
+        return JSONResponse(status_code=422, content={"detail": "invalid publication window"})
+
+    @app.exception_handler(PrivacyQueryBudgetExceeded)
+    async def privacy_budget_handler(
+        request: Request, _error: PrivacyQueryBudgetExceeded
+    ) -> JSONResponse:
+        audit.record(_audit_event(request, "privacy_query_budget"))
+        return JSONResponse(
+            status_code=429,
+            headers={"Retry-After": str(privacy.interval_minutes * 60)},
+            content={"detail": "publication query budget exhausted"},
+        )
 
     @app.exception_handler(InsufficientCapacity)
     @app.exception_handler(IdempotencyConflict)
@@ -210,9 +242,14 @@ def create_app(
     def get_flexibility_zones(
         principal: Annotated[AccessPrincipal, Depends(require_access("flexibility:read"))],
     ) -> dict[str, list[str]]:
-        zones = offer_store.zones(tenant_id=principal.tenant_id)
-        if "*" not in principal.zone_ids:
-            zones = [zone for zone in zones if zone in principal.zone_ids]
+        consume_privacy_budget(principal)
+        # Return the fixed authorization catalogue. A data-driven zone list would
+        # reveal when a cohort crosses the privacy threshold.
+        zones = (
+            offer_store.zones(tenant_id=principal.tenant_id)
+            if "*" in principal.zone_ids
+            else sorted(principal.zone_ids)
+        )
         return {"data": zones}
 
     @app.get("/api/v1/flexibility", response_model=FlexibilityResponse)
@@ -227,10 +264,24 @@ def create_app(
             raise HTTPException(status_code=422, detail="from and to must include a timezone")
         if end <= start:
             raise HTTPException(status_code=422, detail="to must be after from")
-        if end - start > timedelta(days=7):
-            raise HTTPException(status_code=422, detail="query window cannot exceed seven days")
+        privacy.validate_window(start, end)
+        epoch = consume_privacy_budget(principal)
         aggregates = offer_store.query(zone_id, start, end, tenant_id=principal.tenant_id)
-        return FlexibilityResponse(data=reservations.public_residual_capacity(aggregates))
+        public = [
+            item
+            for item in reservations.public_residual_capacity(aggregates)
+            if privacy.eligible(item)
+        ]
+        candidates = [privacy.sanitize(item, epoch) for item in public]
+        snapshot = offer_store.publish_privacy_snapshot(
+            tenant_id=principal.tenant_id,
+            zone_id=zone_id,
+            publication_epoch=epoch,
+            start=start,
+            end=end,
+            candidates=candidates,
+        )
+        return FlexibilityResponse(data=snapshot)
 
     @app.post(
         "/api/v1/reservations",

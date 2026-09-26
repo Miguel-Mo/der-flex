@@ -48,6 +48,19 @@ class OfferStore(Protocol):
         now: datetime | None = None,
     ) -> list[FlexibilityAggregate]: ...
 
+    def consume_privacy_query(self, tenant_id: str, window_start: datetime, limit: int) -> bool: ...
+
+    def publish_privacy_snapshot(
+        self,
+        *,
+        tenant_id: str,
+        zone_id: str,
+        publication_epoch: datetime,
+        start: datetime,
+        end: datetime,
+        candidates: list[FlexibilityAggregate],
+    ) -> list[FlexibilityAggregate]: ...
+
 
 class InMemoryOfferStore:
     """MVP storage boundary. Replacing it must not change domain or API models."""
@@ -64,6 +77,65 @@ class InMemoryOfferStore:
             tuple[str, str, datetime, datetime, ConsequenceType], frozenset[str]
         ] = {}
         self._suppressed_cells: set[tuple[str, str, datetime, datetime, ConsequenceType]] = set()
+        self._privacy_query_counts: dict[tuple[str, datetime], int] = {}
+        self._privacy_snapshots: dict[
+            tuple[str, str, datetime, datetime, datetime, ConsequenceType],
+            FlexibilityAggregate,
+        ] = {}
+
+    def consume_privacy_query(self, tenant_id: str, window_start: datetime, limit: int) -> bool:
+        key = (tenant_id, window_start)
+        with self._lock:
+            current = self._privacy_query_counts.get(key, 0)
+            if current >= limit:
+                return False
+            self._privacy_query_counts[key] = current + 1
+            return True
+
+    def publish_privacy_snapshot(
+        self,
+        *,
+        tenant_id: str,
+        zone_id: str,
+        publication_epoch: datetime,
+        start: datetime,
+        end: datetime,
+        candidates: list[FlexibilityAggregate],
+    ) -> list[FlexibilityAggregate]:
+        with self._lock:
+            for candidate in candidates:
+                key = (
+                    tenant_id,
+                    zone_id,
+                    publication_epoch,
+                    candidate.interval_start,
+                    candidate.interval_end,
+                    candidate.consequence_type,
+                )
+                self._privacy_snapshots.setdefault(key, candidate)
+            return sorted(
+                (
+                    aggregate
+                    for (
+                        snapshot_tenant,
+                        snapshot_zone,
+                        snapshot_epoch,
+                        interval_start,
+                        interval_end,
+                        _consequence,
+                    ), aggregate in self._privacy_snapshots.items()
+                    if snapshot_tenant == tenant_id
+                    and snapshot_zone == zone_id
+                    and snapshot_epoch == publication_epoch
+                    and interval_start >= start
+                    and interval_end <= end
+                ),
+                key=lambda item: (
+                    item.interval_start,
+                    item.interval_end,
+                    item.consequence_type,
+                ),
+            )
 
     def upsert(self, offer: FlexibilityOffer) -> None:
         key = (

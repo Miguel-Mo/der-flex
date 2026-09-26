@@ -9,7 +9,7 @@ def test_traceability_matrix_is_complete_and_resolvable() -> None:
     report = validate_matrix(load_matrix(), collected_tests())
 
     assert report["passed"] is True
-    assert report["claim_count"] == 19
+    assert report["claim_count"] == 20
     assert report["original_audit_claims_complete"] is True
 
 

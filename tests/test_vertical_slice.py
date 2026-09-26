@@ -10,9 +10,17 @@ from fastapi import FastAPI
 from der_flex.adapters.s2 import normalize_pebc_offer
 from der_flex.api import create_app
 from der_flex.domain import InMemoryOfferStore, OfferVersionConflict, StaleOfferError
+from der_flex.privacy import PrivacyPublicationPolicy
 from der_flex.simulators import BatterySimulator, build_simulator_registry
 
 START = datetime(2030, 1, 1, 18, 0, tzinfo=UTC)
+UNIT_POLICY = PrivacyPublicationPolicy(
+    minimum_participants=1,
+    participant_bucket_size=1,
+    power_resolution_kw=0.001,
+    energy_resolution_kwh=0.001,
+    confidence_resolution=0.001,
+)
 
 
 def ingest_battery(battery: BatterySimulator, store: InMemoryOfferStore) -> None:
@@ -52,7 +60,7 @@ def test_s2_offer_is_normalized_and_exposed_by_rest_api() -> None:
     store = InMemoryOfferStore(minimum_participants=1)
     ingest_battery(battery, store)
 
-    aggregate = asyncio.run(query(create_app(store)))
+    aggregate = asyncio.run(query(create_app(store, privacy_policy=UNIT_POLICY)))
 
     assert aggregate["baseline_power_kw"] == 2.0
     assert aggregate["upward_capacity_kw"] == 7.0
@@ -68,7 +76,7 @@ def test_a_new_battery_state_replaces_the_interval_offer() -> None:
     battery.set_power(-1.0)
     ingest_battery(battery, store)
 
-    aggregate = asyncio.run(query(create_app(store)))
+    aggregate = asyncio.run(query(create_app(store, privacy_policy=UNIT_POLICY)))
 
     assert aggregate["baseline_power_kw"] == -1.0
     assert aggregate["upward_capacity_kw"] == 4.0

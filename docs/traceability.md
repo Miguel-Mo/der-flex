@@ -26,6 +26,7 @@ estados, evidencias y la presencia de los diez claims originales.
 | OUT01 | PASS acotado | Outbox transaccional recuperable y concurrente | Al menos una vez; adaptador S2 real pendiente |
 | BND01 | PASS acotado | Bundle y procedencia offline verificables | Sin firma de autoría; dev offline no vendorizado |
 | AUTH01 | PASS acotado | OIDC/JWT, rotación, ámbitos y aislamiento tenant/zonas | IdP operativo no certificado en esta revisión local |
+| PRIV02 | PASS acotado | Snapshots, cadencia, cuantización y presupuesto tenant compartido | Sin ε-DP ni anonimización formal; revisión externa pendiente |
 
 ## Interpretación correcta
 

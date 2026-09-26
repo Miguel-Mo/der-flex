@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import psycopg
@@ -109,6 +109,27 @@ CREATE TABLE IF NOT EXISTS der_flex_published_cohorts (
     PRIMARY KEY (tenant_id, zone_id, interval_start, interval_end, consequence_type),
     CONSTRAINT der_flex_cohort_consequence CHECK (consequence_type IN ('VANISH', 'DEFER'))
 );
+CREATE TABLE IF NOT EXISTS der_flex_privacy_query_budgets (
+    tenant_id text NOT NULL CHECK (tenant_id <> ''),
+    window_start timestamptz NOT NULL,
+    query_count integer NOT NULL CHECK (query_count > 0),
+    PRIMARY KEY (tenant_id, window_start)
+);
+CREATE TABLE IF NOT EXISTS der_flex_privacy_snapshots (
+    tenant_id text NOT NULL CHECK (tenant_id <> ''),
+    zone_id text NOT NULL CHECK (zone_id <> ''),
+    publication_epoch timestamptz NOT NULL,
+    interval_start timestamptz NOT NULL,
+    interval_end timestamptz NOT NULL,
+    consequence_type text NOT NULL CHECK (consequence_type IN ('VANISH', 'DEFER')),
+    payload jsonb NOT NULL CHECK (jsonb_typeof(payload) = 'object'),
+    PRIMARY KEY (
+        tenant_id, zone_id, publication_epoch, interval_start, interval_end,
+        consequence_type
+    )
+);
+INSERT INTO der_flex_schema_migrations (version) VALUES (6)
+ON CONFLICT (version) DO NOTHING;
 INSERT INTO der_flex_schema_migrations (version) VALUES (2)
 ON CONFLICT (version) DO NOTHING;
 DO $$
@@ -340,6 +361,79 @@ class PostgresOfferStore(_PostgresDomainBase):
                 "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
                 (key,),
             )
+
+    def consume_privacy_query(self, tenant_id: str, window_start: datetime, limit: int) -> bool:
+        with self._transaction(
+            (f"privacy-budget:{tenant_id}:{window_start.isoformat()}",)
+        ) as connection:
+            row = connection.execute(
+                """
+                INSERT INTO der_flex_privacy_query_budgets (
+                    tenant_id, window_start, query_count
+                ) VALUES (%s, %s, 1)
+                ON CONFLICT (tenant_id, window_start) DO UPDATE SET
+                    query_count = der_flex_privacy_query_budgets.query_count + 1
+                WHERE der_flex_privacy_query_budgets.query_count < %s
+                RETURNING query_count
+                """,
+                (tenant_id, window_start, limit),
+            ).fetchone()
+            connection.execute(
+                "DELETE FROM der_flex_privacy_query_budgets WHERE window_start < %s",
+                (window_start - timedelta(days=7),),
+            )
+            return row is not None
+
+    def publish_privacy_snapshot(
+        self,
+        *,
+        tenant_id: str,
+        zone_id: str,
+        publication_epoch: datetime,
+        start: datetime,
+        end: datetime,
+        candidates: list[FlexibilityAggregate],
+    ) -> list[FlexibilityAggregate]:
+        lock_key = f"privacy-snapshot:{tenant_id}:{zone_id}:{publication_epoch.isoformat()}"
+        with self._transaction((lock_key,)) as connection:
+            for candidate in candidates:
+                connection.execute(
+                    """
+                    INSERT INTO der_flex_privacy_snapshots (
+                        tenant_id, zone_id, publication_epoch, interval_start,
+                        interval_end, consequence_type, payload
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT DO NOTHING
+                    """,
+                    (
+                        tenant_id,
+                        zone_id,
+                        publication_epoch,
+                        candidate.interval_start,
+                        candidate.interval_end,
+                        candidate.consequence_type,
+                        Jsonb(
+                            {
+                                **candidate.model_dump(mode="json"),
+                                "tenant_id": tenant_id,
+                            }
+                        ),
+                    ),
+                )
+            rows = connection.execute(
+                """
+                SELECT payload FROM der_flex_privacy_snapshots
+                WHERE tenant_id = %s AND zone_id = %s AND publication_epoch = %s
+                  AND interval_start >= %s AND interval_end <= %s
+                ORDER BY interval_start, interval_end, consequence_type
+                """,
+                (tenant_id, zone_id, publication_epoch, start, end),
+            ).fetchall()
+            connection.execute(
+                "DELETE FROM der_flex_privacy_snapshots WHERE publication_epoch < %s",
+                (publication_epoch - timedelta(days=7),),
+            )
+            return [FlexibilityAggregate.model_validate(row["payload"]) for row in rows]
 
     def upsert(self, offer: FlexibilityOffer) -> None:
         with self._transaction(("offer-store",)) as connection:

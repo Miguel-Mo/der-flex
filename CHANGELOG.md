@@ -10,6 +10,10 @@
   recording tokens, identities, tenant/zone identifiers, UUIDs, payloads or telemetry.
 - Persist and partition resources, offers, reservations, capacity, privacy state and
   idempotency by tenant across memory and PostgreSQL backends.
+- Add immutable 15-minute publication snapshots, aligned/bounded windows, tenant-wide
+  query budgets, fixed zone catalogues and conservative aggregate quantisation.
+- Persist privacy snapshots and rate budgets atomically across PostgreSQL processes and
+  document the attacker model, utility loss, non-DP decision and residual risk.
 
 Los cambios notables se documentan aquí siguiendo Keep a Changelog y versionado
 semántico.

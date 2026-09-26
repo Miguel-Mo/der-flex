@@ -277,7 +277,11 @@ async def public_residual_privacy_workflow() -> None:
 
         after = await client.get("/api/v1/flexibility", params=query)
         assert after.status_code == 200
-        assert after.json()["data"] == []
+        # The current cadence is immutable, so the reservation time is not exposed.
+        assert after.json() == initial.json()
+        # The underlying publication state is suppressed for the following cadence.
+        aggregates = store.query(ZONES[0], START, END)
+        assert service.public_residual_capacity(aggregates) == []
 
 
 def test_public_api_suppresses_residual_delta_after_reservation() -> None:

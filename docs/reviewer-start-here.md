@@ -35,6 +35,10 @@ selectivamente `.py`, wheels o directorios anidados.
    `tests/test_api_authorization.py`; pruebe también la matriz completa con PostgreSQL.
    No sustituya firma, emisor, audiencia, tiempo, tenant y rotación por inspección
    narrativa ni confunda claves RSA locales con certificación de un IdP operativo.
+10. Para PRIV02 ejecute `tests/test_privacy_publication.py` y las pruebas PostgreSQL de
+    presupuesto/snapshot. Compare ventanas solapadas e identidades múltiples antes y
+    después de cambios, reservas y reinicios. Lea el modelo de amenazas: no se reclama
+    anonimización formal ni privacidad diferencial.
 
 ## Comprobación offline mínima
 

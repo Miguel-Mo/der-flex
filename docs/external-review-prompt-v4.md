@@ -12,7 +12,7 @@ procedencia. No uses resultados narrados para sustituir una ejecución que sí p
 realizar.
 
 Después revisa los claims T01, T02, P01, P02, PR01, C01, S01, PERF01, SEC01 y PKG01,
-además de ORD01, PHY01, FZ01, MT01, SBOM01, OFF01, OUT01, BND01 y AUTH01. Para cada uno comunica:
+además de ORD01, PHY01, FZ01, MT01, SBOM01, OFF01, OUT01, BND01, AUTH01 y PRIV02. Para cada uno comunica:
 
 - `PASS`, `PASS_WITH_SCOPE_LIMIT`, `FAIL` o `NOT_VERIFIABLE`;
 - pruebas y comandos realmente ejecutados;
@@ -73,6 +73,15 @@ Presta atención especial a los cambios y regresiones de este corte:
    sujeto, tenant, zona, UUID, payload ni telemetría. Separa la verificación local de
    una integración/certificación con un IdP real, que no se reclama.
 
+5. **Consultas correlacionadas PRIV02.** Ejecuta el modelo adversarial descrito en
+   `docs/privacy-threat-model.md`: ventanas solapadas, dos identidades del mismo tenant,
+   cambio de oferta, reserva, intervalos vecinos, zona escasa, reinicio y dos procesos
+   PostgreSQL. Comprueba que el presupuesto se comparte de forma atómica, que la lista de
+   zonas procede del catálogo autorizado y que un snapshot publicado no cambia dentro de
+   sus 15 minutos aunque cambie el estado privado. Verifica cuantización y pérdida de
+   utilidad. Intenta refutar la protección usando fuentes auxiliares; no otorgues una
+   garantía de anonimización ni ε-DP, porque el proyecto las descarta explícitamente.
+
 No conviertas validación con parsers en certificación protocolaria. No conviertas un
 `RLock` en garantía multiproceso. No conviertas un benchmark ASGI local en SLO de
 producción. No conviertas una consulta puntual de vulnerabilidades en garantía futura.
@@ -95,7 +104,7 @@ límite de reproducibilidad de imagen, separado de la validez funcional de PKG01
 Finaliza con dos decisiones separadas: publicación experimental y uso con DER/datos
 reales. Enumera primero los hallazgos nuevos por severidad y después los límites ya
 declarados, para no presentar estos últimos como descubrimientos. Incluye una tabla
-de los 19 claims y una sección específica que diga si el anterior hallazgo medio de
+de los 20 claims y una sección específica que diga si el anterior hallazgo medio de
 compresión cross-OS queda `RESOLVED`, `PARTIAL` o `OPEN`, con la evidencia que sustenta
    esa decisión. El wheel ya coincidió en una reconstrucción Linux de v4.2. Comprueba
    específicamente si ha desaparecido el vector restante encontrado allí: modos

@@ -11,6 +11,7 @@ import pytest
 from der_flex.adapters.s2 import normalize_pebc_offer
 from der_flex.domain import (
     DisabledResourceError,
+    FlexibilityAggregate,
     FlexibilityOffer,
     OfferVersionConflict,
     PostgresOfferStore,
@@ -41,7 +42,8 @@ def postgres_domain() -> tuple[PostgresOfferStore, PostgresResourceRegistry]:
         connection.execute(
             """
             TRUNCATE der_flex_offers, der_flex_offer_sources,
-                     der_flex_published_cohorts, der_flex_resources CASCADE
+                     der_flex_published_cohorts, der_flex_privacy_query_budgets,
+                     der_flex_privacy_snapshots, der_flex_resources CASCADE
             """
         )
         connection.commit()
@@ -218,7 +220,7 @@ def test_schema_version_two_is_recorded(
                 """
             ).fetchall()
         }
-    assert versions == [(1,), (2,), (3,), (4,), (5,)]
+    assert versions == [(1,), (2,), (3,), (4,), (5,), (6,)]
     assert {
         "der_flex_resource_power",
         "der_flex_resource_energy",
@@ -226,6 +228,75 @@ def test_schema_version_two_is_recorded(
         "der_flex_offer_capacity",
         "der_flex_offer_position",
     } <= constraints
+
+
+def test_tenant_query_budget_is_atomic_and_survives_restart(
+    postgres_domain: tuple[PostgresOfferStore, PostgresResourceRegistry],
+) -> None:
+    store, _registry = postgres_domain
+    epoch = datetime(2030, 1, 1, 12, 0, tzinfo=UTC)
+    assert store.consume_privacy_query("tenant-budget", epoch, 2)
+    assert store.consume_privacy_query("tenant-budget", epoch, 2)
+    assert DATABASE_URL is not None
+    restarted = PostgresOfferStore(DATABASE_URL, minimum_participants=1)
+    assert not restarted.consume_privacy_query("tenant-budget", epoch, 2)
+    assert restarted.consume_privacy_query("tenant-budget", epoch + timedelta(minutes=15), 2)
+
+    concurrent_epoch = epoch + timedelta(minutes=30)
+    stores = (
+        PostgresOfferStore(DATABASE_URL, minimum_participants=1),
+        PostgresOfferStore(DATABASE_URL, minimum_participants=1),
+    )
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        outcomes = list(
+            executor.map(
+                lambda item: item.consume_privacy_query("tenant-concurrent", concurrent_epoch, 1),
+                stores,
+            )
+        )
+    assert sorted(outcomes) == [False, True]
+
+
+def test_privacy_snapshot_is_immutable_and_survives_restart(
+    postgres_domain: tuple[PostgresOfferStore, PostgresResourceRegistry],
+) -> None:
+    store, _registry = postgres_domain
+    epoch = datetime(2030, 1, 1, 12, 0, tzinfo=UTC)
+    candidate = FlexibilityAggregate(
+        tenant_id="tenant-snapshot",
+        zone_id="north",
+        interval_start=START,
+        interval_end=END,
+        baseline_power_kw=5,
+        upward_capacity_kw=10,
+        downward_capacity_kw=10,
+        upward_energy_kwh=2.5,
+        downward_energy_kwh=2.5,
+        participant_count=10,
+        confidence=0.9,
+        consequence_type="DEFER",
+        generated_at=epoch,
+    )
+    first = store.publish_privacy_snapshot(
+        tenant_id="tenant-snapshot",
+        zone_id="north",
+        publication_epoch=epoch,
+        start=START,
+        end=END,
+        candidates=[candidate],
+    )
+    assert DATABASE_URL is not None
+    restarted = PostgresOfferStore(DATABASE_URL, minimum_participants=1)
+    changed = candidate.model_copy(update={"upward_capacity_kw": 1})
+    second = restarted.publish_privacy_snapshot(
+        tenant_id="tenant-snapshot",
+        zone_id="north",
+        publication_epoch=epoch,
+        start=START,
+        end=END,
+        candidates=[changed],
+    )
+    assert first == second == [candidate]
 
 
 def test_offer_update_waits_for_reservation_product_lock(

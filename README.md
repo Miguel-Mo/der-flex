@@ -129,7 +129,13 @@ No es una implementación completa de S2 Connect ni una certificación S2. Toda 
 Para dificultar ataques por diferencia, una celda ya publicada se suprime si cambia su
 cohorte, una oferta individual o su capacidad residual tras una reserva. También se
 suprime el segundo intervalo adyacente si cambia la cohorte. Esto prioriza privacidad
-sobre frescura y no convierte el agregado en anónimo. Cuando se configura PostgreSQL,
+sobre frescura y no convierte el agregado en anónimo. La API usa ventanas UTC y snapshots
+inmutables de 15 minutos, limita cada consulta a 24 horas, comparte 60 consultas por
+tenant y cadencia, publica zonas del catálogo autorizado y cuantiza potencia, energía,
+confianza y participantes. PostgreSQL conserva snapshots, supresiones y presupuesto
+entre procesos y reinicios. Estos controles no se presentan como privacidad diferencial;
+el modelo y el riesgo residual se documentan en `docs/privacy-threat-model.md`.
+Cuando se configura PostgreSQL,
 la atomicidad de reservas serializa decisiones de capacidad por producto con bloqueos
 transaccionales compartidos, por lo que varias instancias no pueden confirmar dos veces
 la misma capacidad. Ofertas, registro físico, reservas y estados de privacidad se
@@ -141,7 +147,7 @@ entonces pasa a `COMPLETED` o `FAILED`. La entrega es *al menos una vez*, no exa
 una vez. El aceptador de recursos de la demo es sintético y debe sustituirse por un
 adaptador S2 real.
 
-La autenticación OIDC, los ámbitos y el aislamiento multi-tenant están implementados y
-probados localmente. Todavía faltan los hitos de privacidad formal, operación distribuida
-completa y validación protocolaria externa; por tanto, esta rama no está preparada para
-DER o datos reales.
+La autenticación OIDC, los ámbitos, el aislamiento multi-tenant y el endurecimiento local
+frente a consultas correlacionadas están implementados. La revisión independiente conjunta
+de los hitos 15 y 16 sigue pendiente; además faltan operación distribuida completa y
+validación protocolaria externa. Esta rama no está preparada para DER o datos reales.
