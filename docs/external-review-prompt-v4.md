@@ -1,4 +1,4 @@
-# Prompt de revisión adversarial independiente — bundle v6.0
+# Prompt de revisión adversarial independiente — bundle v7.0
 
 Actúa como auditor independiente y hostil a las afirmaciones. Trabaja únicamente con
 los archivos recibidos y no presupongas que su evidencia es correcta. Si recibes el
