@@ -15,21 +15,24 @@ estados, evidencias y la presencia de los diez claims originales.
 | C01 | PASS acotado | Sin doble venta entre procesos con PostgreSQL | Backend en memoria limitado a un proceso |
 | S01 | PASS | 108 DER, 432 ofertas y 12 agregados | Flota sintética |
 | PERF01 | PASS acotado | p95 HTTP/ASGI local menor de 500 ms | Sin red, TLS o persistencia |
+| PERF02 | PASS acotado | TLS, PostgreSQL, 2 API workers, 2 outbox workers y fallo recuperado dentro de SLO | Gate acotado a un host; no dimensionamiento contractual |
 | SEC01 | PASS acotado | Auditoría puntual y SBOM transitivo | La base de vulnerabilidades cambia |
 | PKG01 | PASS acotado | Imagen Linux ejecutada y endurecida | Falta repetición independiente |
 | ORD01 | PASS acotado | Rechazo durable de replay y sesiones antiguas | Memoria sigue siendo local |
 | PHY01 | PASS acotado | Intersección con envolvente aprovisionada durable | Sin fuente operativa externa |
 | FZ01 | PASS | 1.205 entradas adversarias reproducibles | Campaña finita |
 | MT01 | PASS acotado | 6/6 mutantes críticos eliminados | Catálogo dirigido, no exhaustivo |
-| SBOM01 | PASS | 18 componentes y grafo transitivo | Hash de metadato, no de wheel upstream |
+| SBOM01 | PASS | 22 componentes y grafo transitivo | Hash de metadato, no de wheel upstream |
 | OFF01 | PASS acotado | Instalación offline con hashes en venv nueva | CPython 3.13, Windows/Linux x86-64 |
 | OUT01 | PASS acotado | Outbox transaccional recuperable y concurrente | Al menos una vez; adaptador S2 real pendiente |
 | BND01 | PASS acotado | Bundle y procedencia offline verificables | Sin firma de autoría; dev offline no vendorizado |
+| AUTH01 | PASS acotado | OIDC/JWT, rotación, ámbitos y aislamiento tenant/zonas | IdP operativo no certificado en esta revisión local |
+| PRIV02 | PASS acotado | Snapshots, cadencia, cuantización y presupuesto tenant compartido | Sin ε-DP ni anonimización formal; revisión externa pendiente |
 
 ## Interpretación correcta
 
 `PASS_WITH_SCOPE_LIMIT` no se presenta como conformidad de producción. Significa que
 la afirmación local indicada es reproducible y que la limitación residual está
-registrada en la misma fila. El veredicto para DER reales continúa siendo
-`NO-GO` mientras falten autenticación, aislamiento multi-tenant, administración segura y
-validaciones externas.
+registrada en la misma fila. El hito 15 de autenticación y aislamiento queda cerrado
+localmente. El veredicto para DER reales continúa siendo `NO-GO` mientras falten los
+hitos de privacidad formal, operación distribuida completa y validaciones externas.

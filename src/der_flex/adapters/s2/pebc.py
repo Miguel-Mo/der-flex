@@ -106,9 +106,7 @@ def normalize_pebc_offer(
         not math.isfinite(physical_min_energy_kwh)
         or not math.isfinite(physical_max_energy_kwh)
         or not math.isfinite(physical_initial_energy_kwh)
-        or not physical_min_energy_kwh
-        <= physical_initial_energy_kwh
-        <= physical_max_energy_kwh
+        or not physical_min_energy_kwh <= physical_initial_energy_kwh <= physical_max_energy_kwh
     ):
         raise ValueError("physical energy envelope is invalid")
     if (
@@ -161,9 +159,7 @@ def normalize_pebc_offer(
     cursor = forecast.start_time.astimezone(UTC)
     raw_segments: list[_Segment] = []
     maximum_ramp_adjustment_w = (
-        physical_ramp_rate_kw_per_min
-        * (activation_response_time.total_seconds() / 60)
-        * 1000
+        physical_ramp_rate_kw_per_min * (activation_response_time.total_seconds() / 60) * 1000
     )
 
     for element in forecast.elements:
@@ -186,18 +182,13 @@ def normalize_pebc_offer(
                 power_value.value_upper_95PPR,
             )
             if not math.isfinite(baseline_w) or any(
-                value is not None and not math.isfinite(value)
-                for value in uncertainty_values
+                value is not None and not math.isfinite(value) for value in uncertainty_values
             ):
                 raise ValueError("S2 forecast power values must be finite")
             if not minimum_upper_w <= baseline_w <= maximum_lower_w:
                 raise ValueError("forecast baseline is outside the physical power envelope")
-            upward_w = min(
-                max(0.0, baseline_w - minimum_upper_w), maximum_ramp_adjustment_w
-            )
-            downward_w = min(
-                max(0.0, maximum_lower_w - baseline_w), maximum_ramp_adjustment_w
-            )
+            upward_w = min(max(0.0, baseline_w - minimum_upper_w), maximum_ramp_adjustment_w)
+            downward_w = min(max(0.0, maximum_lower_w - baseline_w), maximum_ramp_adjustment_w)
             raw_segments.append(
                 _Segment(
                     start=cursor,

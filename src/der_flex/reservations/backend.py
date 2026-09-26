@@ -16,7 +16,7 @@ from der_flex.domain.models import (
     Reservation,
 )
 
-type ProductCell = tuple[str, datetime, datetime, ConsequenceType]
+type ProductCell = tuple[str, str, datetime, datetime, ConsequenceType]
 type Residual = tuple[float, float, float, float]
 
 
@@ -101,9 +101,7 @@ class ReservationBackend(Protocol):
     def is_ready(self) -> bool: ...
 
     @contextmanager
-    def transaction(
-        self, lock_keys: tuple[str, ...] = ()
-    ) -> Iterator[ReservationUnitOfWork]: ...
+    def transaction(self, lock_keys: tuple[str, ...] = ()) -> Iterator[ReservationUnitOfWork]: ...
 
     def claim_outbox(
         self, *, now: datetime, limit: int, lease_seconds: int
@@ -140,9 +138,7 @@ class InMemoryReservationBackend:
         return True
 
     @contextmanager
-    def transaction(
-        self, lock_keys: tuple[str, ...] = ()
-    ) -> Iterator[InMemoryReservationBackend]:
+    def transaction(self, lock_keys: tuple[str, ...] = ()) -> Iterator[InMemoryReservationBackend]:
         del lock_keys
         with self._lock:
             yield self
@@ -163,9 +159,7 @@ class InMemoryReservationBackend:
     def get_allocations(self, reservation_id: uuid.UUID) -> tuple[Allocation, ...]:
         return self._allocations[reservation_id]
 
-    def reserved_for_offer(
-        self, offer: FlexibilityOffer, direction: FlexibilityDirection
-    ) -> float:
+    def reserved_for_offer(self, offer: FlexibilityOffer, direction: FlexibilityDirection) -> float:
         total = 0.0
         for reservation_id, reservation in self._reservations.items():
             if reservation.status not in {"CONFIRMED", "ACTIVATED", "COMPLETED", "FAILED"}:

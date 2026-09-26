@@ -129,9 +129,7 @@ def test_fuzzed_s2_numeric_fields_are_rejected_or_remain_physically_bounded() ->
             limit[("start_of_range", "end_of_range")[target % 2]] = value
         else:
             power = forecast["elements"][0]["power_values"][0]
-            power[("value_expected", "value_lower_95PPR", "value_upper_95PPR")[target - 4]] = (
-                value
-            )
+            power[("value_expected", "value_lower_95PPR", "value_upper_95PPR")[target - 4]] = value
 
         try:
             offers = normalize_pebc_offer(

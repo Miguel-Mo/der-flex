@@ -27,9 +27,7 @@ from scripts.verify_release import (
 def test_dev_extra_installs_every_no_isolation_build_requirement() -> None:
     configuration = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
     build_requirements = set(configuration["build-system"]["requires"])
-    development_requirements = set(
-        configuration["project"]["optional-dependencies"]["dev"]
-    )
+    development_requirements = set(configuration["project"]["optional-dependencies"]["dev"])
 
     assert build_requirements <= development_requirements
 
@@ -55,9 +53,11 @@ def write_sdist(path: Path, *, timestamp: int, newline: bytes = b"\n") -> None:
         ),
         "der-flex/setup.cfg": newline.join((b"[egg_info]", b"tag_build =", b"")),
     }
-    with path.open("wb") as raw, gzip.GzipFile(
-        filename="source.tar", fileobj=raw, mode="wb", mtime=timestamp
-    ) as compressed, tarfile.open(fileobj=compressed, mode="w") as archive:
+    with (
+        path.open("wb") as raw,
+        gzip.GzipFile(filename="source.tar", fileobj=raw, mode="wb", mtime=timestamp) as compressed,
+        tarfile.open(fileobj=compressed, mode="w") as archive,
+    ):
         directory = tarfile.TarInfo("der-flex")
         directory.type = tarfile.DIRTYPE
         directory.mode = 0o777 if newline == b"\r\n" else 0o755
@@ -84,11 +84,7 @@ def test_sdist_normalization_removes_archive_metadata_variation(tmp_path: Path) 
     assert sha256(first) == sha256(second)
     with tarfile.open(first, "r:gz") as archive:
         assert archive.getmember("der-flex").mode == 0o755
-        assert all(
-            member.mode == 0o644
-            for member in archive.getmembers()
-            if member.isfile()
-        )
+        assert all(member.mode == 0o644 for member in archive.getmembers() if member.isfile())
         for name in (
             "der-flex/PKG-INFO",
             "der-flex/der_flex.egg-info/PKG-INFO",
@@ -177,9 +173,10 @@ def test_sbom_serial_is_deterministic() -> None:
     ]
     graph = {"pkg:pypi/der-flex@0.1.0": ["pkg:pypi/example@1.0"]}
 
-    assert cyclonedx_sbom(components, graph)["serialNumber"] == cyclonedx_sbom(
-        components, graph
-    )["serialNumber"]
+    assert (
+        cyclonedx_sbom(components, graph)["serialNumber"]
+        == cyclonedx_sbom(components, graph)["serialNumber"]
+    )
 
 
 def test_sbom_inventory_contains_transitive_runtime_closure_only() -> None:
@@ -191,9 +188,12 @@ def test_sbom_inventory_contains_transitive_runtime_closure_only() -> None:
     assert len(names) == len(components)
     assert all(component["bom_ref"].startswith("pkg:pypi/") for component in components)
     assert all(len(component["metadata_sha256"]) == 64 for component in components)
-    assert "pkg:pypi/websockets@13.1" in graph[
-        next(reference for reference in graph if reference.startswith("pkg:pypi/s2-python@"))
-    ]
+    assert (
+        "pkg:pypi/websockets@13.1"
+        in graph[
+            next(reference for reference in graph if reference.startswith("pkg:pypi/s2-python@"))
+        ]
+    )
 
 
 def test_cyclonedx_dependency_references_are_complete() -> None:
@@ -204,10 +204,7 @@ def test_cyclonedx_dependency_references_are_complete() -> None:
     known_refs = component_refs | {project_ref}
 
     assert {dependency["ref"] for dependency in sbom["dependencies"]} == known_refs
-    assert all(
-        set(dependency["dependsOn"]) <= known_refs
-        for dependency in sbom["dependencies"]
-    )
+    assert all(set(dependency["dependsOn"]) <= known_refs for dependency in sbom["dependencies"])
 
 
 def test_sdist_content_check_rejects_incomplete_archive(tmp_path: Path) -> None:
@@ -221,8 +218,8 @@ def test_sdist_content_check_rejects_incomplete_archive(tmp_path: Path) -> None:
 def test_wheelhouse_matches_runtime_lock_and_supported_platforms() -> None:
     inventory = wheelhouse_inventory()
 
-    assert inventory["wheel_count"] == 21
-    assert inventory["locked_component_count"] == 18
+    assert inventory["wheel_count"] == 27
+    assert inventory["locked_component_count"] == 22
     assert inventory["hashes_match_lock"] is True
     assert inventory["platforms"] == ["cp313-win_amd64", "cp313-manylinux-x86_64"]
 

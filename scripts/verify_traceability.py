@@ -23,6 +23,7 @@ KNOWN_EVIDENCE_OUTPUTS = {
     "requirements-runtime.lock",
     "security-audit.json",
     "container-report.json",
+    "pilot-slo-report.json",
     "offline-provenance.json",
     "SHA256SUMS",
 }

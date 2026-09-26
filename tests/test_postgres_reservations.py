@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from multiprocessing import get_context
@@ -8,9 +9,10 @@ from typing import Any
 
 import psycopg
 import pytest
+from psycopg import sql
 
 from der_flex.adapters.s2 import normalize_pebc_offer
-from der_flex.domain import InMemoryOfferStore
+from der_flex.domain import InMemoryOfferStore, PostgresResourceRegistry
 from der_flex.reservations import (
     InsufficientCapacity,
     PostgresReservationBackend,
@@ -28,7 +30,7 @@ START = datetime(2030, 1, 1, 18, 0, tzinfo=UTC)
 END = START + timedelta(minutes=15)
 
 
-def build_offer_store() -> InMemoryOfferStore:
+def build_offer_store(tenant_id: str = "development") -> InMemoryOfferStore:
     store = InMemoryOfferStore(minimum_participants=10)
     for resource in build_demo_fleet():
         constraints, forecast = resource.s2_offer_messages(START)
@@ -43,7 +45,7 @@ def build_offer_store() -> InMemoryOfferStore:
             observed_at=START,
             received_at=START,
         ):
-            store.upsert(offer)
+            store.upsert(offer.model_copy(update={"tenant_id": tenant_id}))
     return store
 
 
@@ -71,9 +73,7 @@ def reserve(service: ReservationService, key: str, power_kw: float = 30.0) -> st
         return "rejected"
 
 
-def process_reserve(
-    database_url: str, key: str, start_event: Any, results: Any
-) -> None:
+def process_reserve(database_url: str, key: str, start_event: Any, results: Any) -> None:
     service = ReservationService(
         build_offer_store(), backend=PostgresReservationBackend(database_url)
     )
@@ -131,6 +131,74 @@ def test_schema_records_migration_and_database_invariants(
         "der_flex_activation_counts",
         "der_flex_public_residual_nonnegative",
     } <= constraints
+
+
+def test_fresh_schema_initialization_is_serialized_across_workers() -> None:
+    assert DATABASE_URL is not None
+    schema = f"der_flex_init_{uuid.uuid4().hex}"
+    with psycopg.connect(DATABASE_URL, autocommit=True) as connection:
+        connection.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
+    scoped_dsn = psycopg.conninfo.make_conninfo(
+        DATABASE_URL,
+        options=f"-c search_path={schema}",
+    )
+
+    def initialize(_index: int) -> None:
+        PostgresReservationBackend(scoped_dsn).initialize()
+        PostgresResourceRegistry(scoped_dsn)
+
+    try:
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            list(executor.map(initialize, range(4)))
+        with psycopg.connect(scoped_dsn) as connection:
+            tables = {
+                row[0]
+                for row in connection.execute(
+                    "SELECT tablename FROM pg_tables WHERE schemaname = current_schema()"
+                ).fetchall()
+            }
+        assert {"der_flex_resources", "der_flex_reservations", "der_flex_outbox"} <= tables
+    finally:
+        with psycopg.connect(DATABASE_URL, autocommit=True) as connection:
+            connection.execute(
+                sql.SQL("DROP SCHEMA {} CASCADE").format(sql.Identifier(schema))
+            )
+
+
+def test_tenants_have_independent_capacity_and_idempotency(
+    postgres_backend: PostgresReservationBackend,
+) -> None:
+    tenant_a = ReservationService(build_offer_store("tenant-a"), backend=postgres_backend)
+    tenant_b = ReservationService(build_offer_store("tenant-b"), backend=postgres_backend)
+
+    first = tenant_a.create(
+        tenant_id="tenant-a",
+        idempotency_key="same-client-key",
+        zone_id=ZONES[0],
+        interval_start=START,
+        interval_end=END,
+        direction="UPWARD",
+        power_kw=30,
+    )
+    second = tenant_b.create(
+        tenant_id="tenant-b",
+        idempotency_key="same-client-key",
+        zone_id=ZONES[0],
+        interval_start=START,
+        interval_end=END,
+        direction="UPWARD",
+        power_kw=30,
+    )
+
+    assert first.reservation_id != second.reservation_id
+    assert first.tenant_id == "tenant-a"
+    assert second.tenant_id == "tenant-b"
+    assert DATABASE_URL is not None
+    restarted = PostgresReservationBackend(DATABASE_URL)
+    loaded = ReservationService(build_offer_store("tenant-a"), backend=restarted).get(
+        first.reservation_id
+    )
+    assert loaded.tenant_id == "tenant-a"
 
 
 def test_two_operating_system_processes_cannot_double_sell(
@@ -248,12 +316,9 @@ def test_expiry_and_privacy_suppression_survive_restart(
     restarted = ReservationService(
         restarted_store, backend=PostgresReservationBackend(DATABASE_URL)
     )
-    assert restarted.public_residual_capacity(
-        restarted_store.query(ZONES[0], START, END)
-    ) == []
-    assert restarted.get(
-        created.reservation_id, now=created_at + timedelta(minutes=6)
-    ).status == "EXPIRED"
-    assert restarted.public_residual_capacity(
-        restarted_store.query(ZONES[0], START, END)
-    ) == []
+    assert restarted.public_residual_capacity(restarted_store.query(ZONES[0], START, END)) == []
+    assert (
+        restarted.get(created.reservation_id, now=created_at + timedelta(minutes=6)).status
+        == "EXPIRED"
+    )
+    assert restarted.public_residual_capacity(restarted_store.query(ZONES[0], START, END)) == []

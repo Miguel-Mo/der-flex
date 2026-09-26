@@ -26,7 +26,8 @@ def test_demo_runs_108_resources_for_one_simulated_hour_without_identifier_leak(
             assert response.status_code == 200
             payload = response.json()
             assert len(payload["data"]) == 4
-            assert all(item["participant_count"] == 36 for item in payload["data"])
+            # Public counts are bucketed down to avoid disclosing the exact cohort size.
+            assert all(item["participant_count"] == 35 for item in payload["data"])
             assert "resource_id" not in response.text
 
 

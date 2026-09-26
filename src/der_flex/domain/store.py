@@ -21,9 +21,11 @@ class OfferStore(Protocol):
 
     def upsert(self, offer: FlexibilityOffer) -> None: ...
 
-    def remove_resource(self, resource_id: str) -> int: ...
+    def remove_resource(self, resource_id: str, *, tenant_id: str = "development") -> int: ...
 
-    def zones(self, *, now: datetime | None = None) -> list[str]: ...
+    def zones(
+        self, *, tenant_id: str = "development", now: datetime | None = None
+    ) -> list[str]: ...
 
     def eligible_offers(
         self,
@@ -32,6 +34,7 @@ class OfferStore(Protocol):
         interval_start: datetime,
         interval_end: datetime,
         consequence_type: ConsequenceType,
+        tenant_id: str = "development",
         now: datetime | None = None,
     ) -> list[FlexibilityOffer]: ...
 
@@ -41,7 +44,21 @@ class OfferStore(Protocol):
         start: datetime,
         end: datetime,
         *,
+        tenant_id: str = "development",
         now: datetime | None = None,
+    ) -> list[FlexibilityAggregate]: ...
+
+    def consume_privacy_query(self, tenant_id: str, window_start: datetime, limit: int) -> bool: ...
+
+    def publish_privacy_snapshot(
+        self,
+        *,
+        tenant_id: str,
+        zone_id: str,
+        publication_epoch: datetime,
+        start: datetime,
+        end: datetime,
+        candidates: list[FlexibilityAggregate],
     ) -> list[FlexibilityAggregate]: ...
 
 
@@ -53,24 +70,83 @@ class InMemoryOfferStore:
             raise ValueError("minimum_participants must be positive")
         self.minimum_participants = minimum_participants
         self._lock = RLock()
-        self._offers: dict[tuple[str, str, datetime, str], FlexibilityOffer] = {}
-        self._source_positions: dict[str, tuple[int, int]] = {}
-        self._disconnected_resources: set[str] = set()
+        self._offers: dict[tuple[str, str, str, datetime, str], FlexibilityOffer] = {}
+        self._source_positions: dict[tuple[str, str], tuple[int, int]] = {}
+        self._disconnected_resources: set[tuple[str, str]] = set()
         self._published_cohorts: dict[
-            tuple[str, datetime, datetime, ConsequenceType], frozenset[str]
+            tuple[str, str, datetime, datetime, ConsequenceType], frozenset[str]
         ] = {}
-        self._suppressed_cells: set[
-            tuple[str, datetime, datetime, ConsequenceType]
-        ] = set()
+        self._suppressed_cells: set[tuple[str, str, datetime, datetime, ConsequenceType]] = set()
+        self._privacy_query_counts: dict[tuple[str, datetime], int] = {}
+        self._privacy_snapshots: dict[
+            tuple[str, str, datetime, datetime, datetime, ConsequenceType],
+            FlexibilityAggregate,
+        ] = {}
+
+    def consume_privacy_query(self, tenant_id: str, window_start: datetime, limit: int) -> bool:
+        key = (tenant_id, window_start)
+        with self._lock:
+            current = self._privacy_query_counts.get(key, 0)
+            if current >= limit:
+                return False
+            self._privacy_query_counts[key] = current + 1
+            return True
+
+    def publish_privacy_snapshot(
+        self,
+        *,
+        tenant_id: str,
+        zone_id: str,
+        publication_epoch: datetime,
+        start: datetime,
+        end: datetime,
+        candidates: list[FlexibilityAggregate],
+    ) -> list[FlexibilityAggregate]:
+        with self._lock:
+            for candidate in candidates:
+                key = (
+                    tenant_id,
+                    zone_id,
+                    publication_epoch,
+                    candidate.interval_start,
+                    candidate.interval_end,
+                    candidate.consequence_type,
+                )
+                self._privacy_snapshots.setdefault(key, candidate)
+            return sorted(
+                (
+                    aggregate
+                    for (
+                        snapshot_tenant,
+                        snapshot_zone,
+                        snapshot_epoch,
+                        interval_start,
+                        interval_end,
+                        _consequence,
+                    ), aggregate in self._privacy_snapshots.items()
+                    if snapshot_tenant == tenant_id
+                    and snapshot_zone == zone_id
+                    and snapshot_epoch == publication_epoch
+                    and interval_start >= start
+                    and interval_end <= end
+                ),
+                key=lambda item: (
+                    item.interval_start,
+                    item.interval_end,
+                    item.consequence_type,
+                ),
+            )
 
     def upsert(self, offer: FlexibilityOffer) -> None:
         key = (
+            offer.tenant_id,
             offer.resource_id,
             offer.zone_id,
             offer.interval_start,
             offer.consequence_type,
         )
         cell = (
+            offer.tenant_id,
             offer.zone_id,
             offer.interval_start,
             offer.interval_end,
@@ -78,15 +154,14 @@ class InMemoryOfferStore:
         )
         with self._lock:
             incoming_position = (offer.source_epoch, offer.source_sequence)
-            source_position = self._source_positions.get(offer.resource_id)
+            resource_key = (offer.tenant_id, offer.resource_id)
+            source_position = self._source_positions.get(resource_key)
             if (
-                offer.resource_id in self._disconnected_resources
+                resource_key in self._disconnected_resources
                 and source_position is not None
                 and incoming_position <= source_position
             ):
-                raise StaleOfferError(
-                    "a disconnected resource must advance its source position"
-                )
+                raise StaleOfferError("a disconnected resource must advance its source position")
             if source_position is not None and incoming_position < source_position:
                 raise StaleOfferError(
                     f"offer position {incoming_position} is older than {source_position}"
@@ -96,12 +171,14 @@ class InMemoryOfferStore:
                     existing_key
                     for existing_key, existing_offer in self._offers.items()
                     if existing_offer.resource_id == offer.resource_id
+                    and existing_offer.tenant_id == offer.tenant_id
                     and (existing_offer.source_epoch, existing_offer.source_sequence)
                     < incoming_position
                 ]
                 for obsolete_key in obsolete_keys:
                     obsolete = self._offers.pop(obsolete_key)
                     obsolete_cell = (
+                        obsolete.tenant_id,
                         obsolete.zone_id,
                         obsolete.interval_start,
                         obsolete.interval_end,
@@ -109,8 +186,8 @@ class InMemoryOfferStore:
                     )
                     if obsolete_cell in self._published_cohorts:
                         self._suppressed_cells.add(obsolete_cell)
-            self._source_positions[offer.resource_id] = incoming_position
-            self._disconnected_resources.discard(offer.resource_id)
+            self._source_positions[resource_key] = incoming_position
+            self._disconnected_resources.discard(resource_key)
             previous = self._offers.get(key)
             if previous == offer:
                 return
@@ -125,12 +202,17 @@ class InMemoryOfferStore:
                 self._suppressed_cells.add(cell)
             self._offers[key] = offer
 
-    def remove_resource(self, resource_id: str) -> int:
+    def remove_resource(self, resource_id: str, *, tenant_id: str = "development") -> int:
         with self._lock:
-            keys = [key for key in self._offers if key[0] == resource_id]
+            keys = [
+                key
+                for key, offer in self._offers.items()
+                if offer.resource_id == resource_id and offer.tenant_id == tenant_id
+            ]
             for key in keys:
                 offer = self._offers[key]
                 cell = (
+                    offer.tenant_id,
                     offer.zone_id,
                     offer.interval_start,
                     offer.interval_end,
@@ -140,16 +222,16 @@ class InMemoryOfferStore:
                     self._suppressed_cells.add(cell)
                 del self._offers[key]
             if keys:
-                self._disconnected_resources.add(resource_id)
+                self._disconnected_resources.add((tenant_id, resource_id))
             return len(keys)
 
-    def zones(self, *, now: datetime | None = None) -> list[str]:
+    def zones(self, *, tenant_id: str = "development", now: datetime | None = None) -> list[str]:
         current = now or datetime.now(UTC)
         counts: dict[str, set[str]] = defaultdict(set)
         with self._lock:
             offers = tuple(self._offers.values())
         for offer in offers:
-            if offer.expires_at >= current:
+            if offer.tenant_id == tenant_id and offer.expires_at >= current:
                 counts[offer.zone_id].add(offer.resource_id)
         return sorted(
             zone
@@ -164,6 +246,7 @@ class InMemoryOfferStore:
         interval_start: datetime,
         interval_end: datetime,
         consequence_type: ConsequenceType,
+        tenant_id: str = "development",
         now: datetime | None = None,
     ) -> list[FlexibilityOffer]:
         current = now or datetime.now(UTC)
@@ -174,6 +257,7 @@ class InMemoryOfferStore:
                 offer
                 for offer in offers
                 if offer.zone_id == zone_id
+                and offer.tenant_id == tenant_id
                 and offer.interval_start == interval_start
                 and offer.interval_end == interval_end
                 and offer.consequence_type == consequence_type
@@ -188,6 +272,7 @@ class InMemoryOfferStore:
         start: datetime,
         end: datetime,
         *,
+        tenant_id: str = "development",
         now: datetime | None = None,
     ) -> list[FlexibilityAggregate]:
         generated_at = now or datetime.now(UTC)
@@ -197,7 +282,11 @@ class InMemoryOfferStore:
 
         with self._lock:
             for offer in self._offers.values():
-                if offer.zone_id != zone_id or offer.expires_at < generated_at:
+                if (
+                    offer.tenant_id != tenant_id
+                    or offer.zone_id != zone_id
+                    or offer.expires_at < generated_at
+                ):
                     continue
                 if offer.interval_start < start or offer.interval_end > end:
                     continue
@@ -207,20 +296,25 @@ class InMemoryOfferStore:
 
             result: list[FlexibilityAggregate] = []
             for (interval_start, interval_end, consequence_type), offers in sorted(groups.items()):
-                cell = (zone_id, interval_start, interval_end, consequence_type)
+                cell = (
+                    tenant_id,
+                    zone_id,
+                    interval_start,
+                    interval_end,
+                    consequence_type,
+                )
                 cohort = frozenset(offer.resource_id for offer in offers)
                 previous_cohort = self._published_cohorts.get(cell)
                 if previous_cohort is not None and previous_cohort != cohort:
                     self._suppressed_cells.add(cell)
                 if any(
-                    published_zone == zone_id
+                    published_tenant == tenant_id
+                    and published_zone == zone_id
                     and published_consequence == consequence_type
-                    and (
-                        published_end == interval_start
-                        or interval_end == published_start
-                    )
+                    and (published_end == interval_start or interval_end == published_start)
                     and published_cohort != cohort
                     for (
+                        published_tenant,
                         published_zone,
                         published_start,
                         published_end,
@@ -236,8 +330,7 @@ class InMemoryOfferStore:
                 )
                 confidence = (
                     sum(
-                        offer.confidence
-                        * (offer.upward_capacity_kw + offer.downward_capacity_kw)
+                        offer.confidence * (offer.upward_capacity_kw + offer.downward_capacity_kw)
                         for offer in offers
                     )
                     / total_weight
@@ -246,6 +339,7 @@ class InMemoryOfferStore:
                 )
                 result.append(
                     FlexibilityAggregate(
+                        tenant_id=tenant_id,
                         zone_id=zone_id,
                         interval_start=interval_start,
                         interval_end=interval_end,

@@ -56,7 +56,6 @@ def test_offline_provenance_links_release_container_and_materials(tmp_path: Path
     assert provenance["subjects"][1]["digest"] == "sha256:" + "c" * 64
     assert len(provenance["materials"]["source_manifest_sha256"]) == 64
     assert any(
-        "reproducible Docker image" in limitation
-        for limitation in provenance["limitations"]
+        "reproducible Docker image" in limitation for limitation in provenance["limitations"]
     )
     json.dumps(provenance)

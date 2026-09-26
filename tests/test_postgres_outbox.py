@@ -171,9 +171,7 @@ def test_webhook_retry_survives_restart_with_stable_event_ids(
 
     assert len(delivered_ids) == 3
     assert len(set(delivered_ids)) == 3
-    assert {headers["X-DER-Flex-Event-ID"] for headers in failed_headers} == set(
-        delivered_ids
-    )
+    assert {headers["X-DER-Flex-Event-ID"] for headers in failed_headers} == set(delivered_ids)
     assert DATABASE_URL is not None
     with psycopg.connect(DATABASE_URL) as connection:
         statuses = connection.execute(
@@ -243,9 +241,10 @@ def test_expired_worker_lease_is_reclaimed(
 
     claimed = postgres_backend.claim_outbox(now=now, limit=100, lease_seconds=30)
     assert claimed
-    assert postgres_backend.claim_outbox(
-        now=now + timedelta(seconds=29), limit=100, lease_seconds=30
-    ) == ()
+    assert (
+        postgres_backend.claim_outbox(now=now + timedelta(seconds=29), limit=100, lease_seconds=30)
+        == ()
+    )
     reclaimed = postgres_backend.claim_outbox(
         now=now + timedelta(seconds=31), limit=100, lease_seconds=30
     )
@@ -291,9 +290,7 @@ def test_two_workers_never_claim_the_same_event(
     with ThreadPoolExecutor(max_workers=2) as executor:
         claims = list(
             executor.map(
-                lambda backend: backend.claim_outbox(
-                    now=now, limit=2, lease_seconds=30
-                ),
+                lambda backend: backend.claim_outbox(now=now, limit=2, lease_seconds=30),
                 backends,
             )
         )
@@ -326,9 +323,7 @@ def test_outbox_enqueue_rolls_back_with_transaction(
         reservation_id=reservation_id,
     )
 
-    with pytest.raises(
-        RuntimeError, match="rollback"
-    ), postgres_backend.transaction() as state:
+    with pytest.raises(RuntimeError, match="rollback"), postgres_backend.transaction() as state:
         state.enqueue_outbox(task, available_at=datetime.now(UTC))
         raise RuntimeError("rollback")
 

@@ -83,6 +83,16 @@
       "residual_limit": "Benchmark local en memoria; no representa red, TLS, base de datos ni carga distribuida."
     },
     {
+      "id": "PERF02",
+      "claim": "La pila TLS con PostgreSQL, dos workers API y dos workers outbox cumple los SLO locales y se recupera sin relajar invariantes.",
+      "status": "PASS_WITH_SCOPE_LIMIT",
+      "implementation_paths": ["scripts/verify_pilot_slo.py", "src/der_flex/observability.py", "compose.yaml", "docs/adr/011-slo-y-degradacion-controlada.md"],
+      "test_nodes": ["tests/test_observability.py::test_metrics_publish_latency_saturation_and_anonymous_labels", "tests/test_observability.py::test_concurrency_limit_sheds_without_blocking_health_or_metrics", "tests/test_observability.py::test_database_errors_are_sanitized_as_retryable_unavailability", "tests/test_pilot_slo.py::test_slo_gate_rejects_excess_latency", "tests/test_postgres_reservations.py::test_fresh_schema_initialization_is_serialized_across_workers"],
+      "commands": ["python scripts/verify_pilot_slo.py"],
+      "evidence_outputs": ["pilot-slo-report.json"],
+      "residual_limit": "Gate acotado a un solo host con certificado e IdP locales; no constituye dimensionamiento multi-host, ensayo prolongado ni SLO contractual."
+    },
+    {
       "id": "SEC01",
       "claim": "pip-audit no comunica vulnerabilidades conocidas en la resolución actual.",
       "status": "PASS_WITH_SCOPE_LIMIT",
@@ -154,7 +164,7 @@
     },
     {
       "id": "OFF01",
-      "claim": "El wheel y sus 18 dependencias se instalan sin índice en una venv nueva con hashes obligatorios.",
+      "claim": "El wheel y sus 22 dependencias se instalan sin índice en una venv nueva con hashes obligatorios.",
       "status": "PASS_WITH_SCOPE_LIMIT",
       "implementation_paths": ["requirements-runtime.lock", "vendor/wheelhouse/fastapi-0.141.1-py3-none-any.whl", "scripts/verify_release.py"],
       "test_nodes": ["tests/test_release_verification.py::test_wheelhouse_matches_runtime_lock_and_supported_platforms", "tests/test_release_verification.py::test_wheelhouse_rejects_a_tampered_lock"],
@@ -181,6 +191,26 @@
       "commands": ["python scripts/build_review_bundle.py", "python verify_bundle.py"],
       "evidence_outputs": ["source-manifest.json", "SHA256SUMS", "evidence.json", "offline-provenance.json"],
       "residual_limit": "La procedencia offline demuestra integridad, no autoría; la suite de desarrollo puede requerir red y solo el runtime está vendorizado."
+    },
+    {
+      "id": "AUTH01",
+      "claim": "Todas las rutas de negocio verifican identidad OIDC y aíslan ámbito, tenant y zona; toda denegación se audita sin datos sensibles.",
+      "status": "PASS_WITH_SCOPE_LIMIT",
+      "implementation_paths": ["src/der_flex/security.py", "src/der_flex/security_audit.py", "src/der_flex/api/app.py", "docs/adr/009-api-auth-boundary.md"],
+      "test_nodes": ["tests/test_oidc_security.py::test_oidc_accepts_scoped_tenant_identity_and_rotated_key", "tests/test_oidc_security.py::test_oidc_rejects_unknown_key_missing_token_and_insecure_configuration", "tests/test_oidc_security.py::test_oidc_requires_not_before_claim", "tests/test_api_authorization.py::test_cross_tenant_reservation_uuid_is_hidden", "tests/test_api_authorization.py::test_security_audit_uses_route_template_and_never_records_credentials_or_uuid"],
+      "commands": ["python -m pytest -q tests/test_oidc_security.py tests/test_api_authorization.py", "python -m pytest -q"],
+      "evidence_outputs": ["evidence.json", "traceability-report.json"],
+      "residual_limit": "Verificación criptográfica reproducida con claves RSA rotadas localmente; la integración con el proveedor OIDC operativo pertenece al despliegue y no se afirma como certificada."
+    },
+    {
+      "id": "PRIV02",
+      "claim": "La publicación usa snapshots de cadencia fija, cuantización, catálogo de zonas y presupuesto compartido por tenant resistente a procesos e identidades múltiples.",
+      "status": "PASS_WITH_SCOPE_LIMIT",
+      "implementation_paths": ["src/der_flex/privacy.py", "src/der_flex/api/app.py", "src/der_flex/domain/store.py", "src/der_flex/domain/postgres.py", "docs/privacy-threat-model.md", "docs/adr/004-privacidad-agregados.md"],
+      "test_nodes": ["tests/test_privacy_publication.py::test_overlapping_windows_and_multiple_identities_receive_same_sticky_cells", "tests/test_privacy_publication.py::test_change_within_publication_epoch_cannot_reveal_its_timing", "tests/test_privacy_publication.py::test_query_budget_is_shared_by_all_identities_of_a_tenant", "tests/test_privacy_publication.py::test_zone_catalog_does_not_reveal_current_sparse_or_missing_cohorts", "tests/test_privacy_publication.py::test_auxiliary_exact_values_do_not_recover_the_last_raw_contribution", "tests/test_privacy_publication.py::test_public_privacy_threshold_cannot_be_configured_below_ten", "tests/test_postgres_domain.py::test_tenant_query_budget_is_atomic_and_survives_restart", "tests/test_postgres_domain.py::test_privacy_snapshot_is_immutable_and_survives_restart"],
+      "commands": ["python -m pytest -q tests/test_privacy_publication.py", "python -m pytest -q tests/test_postgres_domain.py"],
+      "evidence_outputs": ["evidence.json", "traceability-report.json"],
+      "residual_limit": "No se afirma privacidad diferencial ni anonimización: persisten vínculo con fuentes auxiliares, conocimiento previo, abuso autorizado y pérdida total de utilidad tras supresión. Requiere revisión independiente antes de datos reales."
     }
   ]
 }

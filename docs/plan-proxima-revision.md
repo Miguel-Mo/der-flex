@@ -182,6 +182,11 @@ fallos auditable, sin efectos duplicados en un receptor idempotente.
 
 ## Hito 15 — Autenticación, autorización y aislamiento multiempresa
 
+**Estado:** completado localmente. OIDC/JWT con JWKS rotatorio, ámbitos separados,
+partición persistente por `tenant_id`, arranque seguro y auditoría mínima de rechazos
+están implementados y cubiertos por pruebas. Pendiente únicamente la auditoría externa
+que se realizará al cerrar el hito completo.
+
 **Problema a resolver:** cualquier cliente de red puede consultar agregados o reservar
 capacidad y no existe una frontera de tenant.
 
@@ -196,6 +201,12 @@ escalada horizontal/vertical, acceso cruzado por UUID y consultas sin tenant.
 y todos los rechazos quedan auditados sin registrar secretos o telemetría doméstica.
 
 ## Hito 16 — Privacidad resistente a consultas correlacionadas
+
+**Estado:** implementación local completada; revisión independiente pendiente. Están
+aplicados catálogo fijo de zonas, ventanas/cadencia UTC, snapshots inmutables,
+cuantización y presupuesto compartido por tenant con persistencia PostgreSQL. La revisión
+v7.0 confirmó el diseño y detectó que `k=10` podía rebajarse por inyección; el suelo ya
+está forzado en código y queda pendiente su reverificación incremental junto con `nbf`.
 
 **Problema a resolver:** la supresión actual bloquea los deltas conocidos, pero no ofrece
 una garantía formal frente a vínculo, inferencia, múltiples identidades o reinicios.
@@ -212,6 +223,11 @@ parámetros, utilidad perdida y condiciones explícitas de uso; no basta con que
 funcionales pasen.
 
 ## Hito 17 — Rendimiento y resiliencia de la arquitectura real
+
+**Estado:** completado localmente. El gate usa TLS, PostgreSQL efímero, dos workers API,
+dos workers de outbox, carga sostenida, shedding, backlog durable y pausa/recuperación
+de la base de datos. La primera ejecución conforme queda documentada en
+`docs/hito-17-rendimiento-resiliencia.md`; falta repetición independiente.
 
 **Problema a resolver:** el benchmark ASGI en memoria no predice el comportamiento con
 TLS, base de datos, múltiples procesos y colas.

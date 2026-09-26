@@ -15,6 +15,12 @@ from der_flex.simulators import BatterySimulator, build_simulator_registry
 START = datetime(2030, 1, 1, 18, 0, tzinfo=UTC)
 
 
+def public_test_fleet() -> list[BatterySimulator]:
+    return [
+        BatterySimulator(resource_id=f"10000000-0000-4000-8000-{index:012d}") for index in range(10)
+    ]
+
+
 def ingest_battery(battery: BatterySimulator, store: InMemoryOfferStore) -> None:
     constraints, forecast = battery.s2_offer_messages(START)
     offers = normalize_pebc_offer(
@@ -48,31 +54,33 @@ async def query(app: FastAPI) -> dict[str, Any]:
 
 
 def test_s2_offer_is_normalized_and_exposed_by_rest_api() -> None:
-    battery = BatterySimulator(power_kw=2.0)
-    store = InMemoryOfferStore(minimum_participants=1)
-    ingest_battery(battery, store)
+    batteries = public_test_fleet()
+    store = InMemoryOfferStore(minimum_participants=10)
+    for battery in batteries:
+        ingest_battery(battery, store)
 
     aggregate = asyncio.run(query(create_app(store)))
 
-    assert aggregate["baseline_power_kw"] == 2.0
-    assert aggregate["upward_capacity_kw"] == 7.0
-    assert aggregate["downward_capacity_kw"] == 3.0
-    assert aggregate["participant_count"] == 1
+    assert aggregate["baseline_power_kw"] == 20.0
+    assert aggregate["upward_capacity_kw"] == 70.0
+    assert aggregate["downward_capacity_kw"] == 30.0
+    assert aggregate["participant_count"] == 10
     assert aggregate["product_class"] == "BEST_EFFORT_PEBC"
 
 
 def test_a_new_battery_state_replaces_the_interval_offer() -> None:
-    battery = BatterySimulator(power_kw=2.0)
-    store = InMemoryOfferStore(minimum_participants=1)
-    ingest_battery(battery, store)
-    battery.set_power(-1.0)
-    ingest_battery(battery, store)
+    batteries = public_test_fleet()
+    store = InMemoryOfferStore(minimum_participants=10)
+    for battery in batteries:
+        ingest_battery(battery, store)
+    batteries[0].set_power(-1.0)
+    ingest_battery(batteries[0], store)
 
     aggregate = asyncio.run(query(create_app(store)))
 
-    assert aggregate["baseline_power_kw"] == -1.0
-    assert aggregate["upward_capacity_kw"] == 4.0
-    assert aggregate["downward_capacity_kw"] == 6.0
+    assert aggregate["baseline_power_kw"] == 17.0
+    assert aggregate["upward_capacity_kw"] == 67.0
+    assert aggregate["downward_capacity_kw"] == 33.0
 
 
 def test_privacy_threshold_suppresses_single_participant() -> None:

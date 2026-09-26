@@ -36,6 +36,7 @@ py -3.13 -m venv .venv
 .\.venv\Scripts\python.exe scripts\s2_pebc_smoke.py
 .\.venv\Scripts\python.exe -m pytest
 .\.venv\Scripts\python.exe scripts\verify_release.py
+.\.venv\Scripts\python.exe scripts\verify_pilot_slo.py
 .\.venv\Scripts\python.exe scripts\build_review_bundle.py
 .\.venv\Scripts\der-flex-demo.exe
 ```
@@ -48,6 +49,12 @@ docker compose up --build
 
 El valor de `DER_FLEX_WEBHOOK_SECRET` debe configurarse fuera de la demo y ser idéntico
 en la API y todos los workers; el valor por defecto de Compose es solo local.
+
+Con PostgreSQL, `DER_FLEX_AUTH_MODE` es obligatorio: `oidc` exige además
+`DER_FLEX_OIDC_ISSUER`, `DER_FLEX_OIDC_AUDIENCE` y `DER_FLEX_OIDC_JWKS_URL`, todos con
+HTTPS. Compose declara conscientemente `development` para la demo local. Ese modo no
+debe usarse con DER ni datos reales. OIDC valida firma RSA, emisor, audiencia,
+caducidad, tenant, ámbitos y zonas, y admite rotación mediante `kid`/JWKS.
 
 Compose arranca PostgreSQL, la API y un worker de outbox, y configura la demo para persistir el registro físico,
 ofertas normalizadas, posiciones de sesión, cohortes públicas, reservas, asignaciones,
@@ -81,12 +88,12 @@ las relaciones entre ellas y registra PURLs y hashes SHA-256 del metadato instal
 Los extras de desarrollo quedan fuera; el extra `ws` solicitado a S2 sí se incluye.
 La misma puerta ejecuta seis mutaciones dirigidas sobre controles críticos y exige que
 las pruebas maten todas antes de declarar el release local como válido.
-También crea una venv vacía e instala, con red deshabilitada para pip, el wheel y las 18
+También crea una venv vacía e instala, con red deshabilitada para pip, el wheel y las 22
 dependencias desde `vendor/wheelhouse` usando los hashes de `requirements-runtime.lock`.
 El wheelhouse cubre CPython 3.13 en Windows AMD64 y Linux x86-64.
 La instalación editable usa `requirements-runtime.constraints` para conservar ese mismo
 cierre de producción aunque aparezcan versiones transitivas nuevas en el índice.
-El segundo script genera un TAR canónico v5.0 y un ZIP de transporte de tres archivos.
+El segundo script genera un TAR canónico v8.0 y un ZIP de transporte de tres archivos.
 Un auditor puede verificarlo con Python estándar sin depender del sitio web ni de que
 su plataforma conserve extensiones de código dentro de ZIP anidados.
 
@@ -100,6 +107,14 @@ imagen y materiales por hash sin fingir una firma de identidad.
 El digest identifica exactamente la imagen ensayada; no se afirma que dos builds
 Docker independientes produzcan una imagen idéntica byte a byte.
 
+`python scripts/verify_pilot_slo.py` levanta una pila efímera distinta de Compose:
+PostgreSQL Linux, dos workers API con TLS y dos workers de outbox. Mide p50/p95/p99,
+fuerza una ráfaga hasta activar backpressure, recupera un backlog durable y pausa la
+base de datos para verificar liveness, readiness, respuesta `503`, privacidad e
+invariantes al recuperarse. Escribe `build/pilot-slo-report.json`. Los límites y el
+alcance exacto están documentados en
+[`docs/hito-17-rendimiento-resiliencia.md`](docs/hito-17-rendimiento-resiliencia.md).
+
 ## Documentación
 
 - [Plan de ejecución](PLAN.md)
@@ -109,6 +124,7 @@ Docker independientes produzcan una imagen idéntica byte a byte.
 - [Resultado del Hito 4](docs/hito-4-openadr.md)
 - [Resultado del Hito 5](docs/hito-5-endurecimiento.md)
 - [Preparación del Hito 6](docs/hito-6-publicacion.md)
+- [Resultado del Hito 17](docs/hito-17-rendimiento-resiliencia.md)
 - [Matriz de trazabilidad](docs/traceability.md)
 - [Arquitectura](docs/architecture.md)
 - [Cómo contribuir](CONTRIBUTING.md)
@@ -123,7 +139,13 @@ No es una implementación completa de S2 Connect ni una certificación S2. Toda 
 Para dificultar ataques por diferencia, una celda ya publicada se suprime si cambia su
 cohorte, una oferta individual o su capacidad residual tras una reserva. También se
 suprime el segundo intervalo adyacente si cambia la cohorte. Esto prioriza privacidad
-sobre frescura y no convierte el agregado en anónimo. Cuando se configura PostgreSQL,
+sobre frescura y no convierte el agregado en anónimo. La API usa ventanas UTC y snapshots
+inmutables de 15 minutos, limita cada consulta a 24 horas, comparte 60 consultas por
+tenant y cadencia, publica zonas del catálogo autorizado y cuantiza potencia, energía,
+confianza y participantes. PostgreSQL conserva snapshots, supresiones y presupuesto
+entre procesos y reinicios. Estos controles no se presentan como privacidad diferencial;
+el modelo y el riesgo residual se documentan en `docs/privacy-threat-model.md`.
+Cuando se configura PostgreSQL,
 la atomicidad de reservas serializa decisiones de capacidad por producto con bloqueos
 transaccionales compartidos, por lo que varias instancias no pueden confirmar dos veces
 la misma capacidad. Ofertas, registro físico, reservas y estados de privacidad se
@@ -135,5 +157,8 @@ entonces pasa a `COMPLETED` o `FAILED`. La entrega es *al menos una vez*, no exa
 una vez. El aceptador de recursos de la demo es sintético y debe sustituirse por un
 adaptador S2 real.
 
-Todavía faltan autenticación, aislamiento multi-tenant y administración segura; por
-tanto, esta rama no está preparada para DER o datos reales.
+La autenticación OIDC, los ámbitos, el aislamiento multi-tenant, el endurecimiento local
+frente a consultas correlacionadas y la puerta local de carga/resiliencia están
+implementados. Sus métricas son una regresión acotada de un solo host, no un
+dimensionamiento contractual. Faltan validación protocolaria, identidad y operación
+externas. Esta rama no está preparada para DER o datos reales.

@@ -1,13 +1,13 @@
-from __future__ import annotations
-
 import ipaddress
 from datetime import datetime, timedelta
 from typing import Annotated, Self
 from uuid import UUID
 
-from fastapi import FastAPI, Header, HTTPException, Query, Request, status
+import psycopg
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, model_validator
 
 from der_flex import __version__
@@ -20,9 +20,15 @@ from der_flex.domain.models import (
 )
 from der_flex.domain.store import InMemoryOfferStore, OfferStore
 from der_flex.observability import (
+    ConcurrencyLimitMiddleware,
     MetricsRegistry,
     RequestBodyLimitMiddleware,
     StructuredLoggingMiddleware,
+)
+from der_flex.privacy import (
+    PrivacyPublicationPolicy,
+    PrivacyQueryBudgetExceeded,
+    PrivacyQueryRejected,
 )
 from der_flex.reservations import (
     IdempotencyConflict,
@@ -30,6 +36,18 @@ from der_flex.reservations import (
     ReservationNotFound,
     ReservationService,
     ReservationStateConflict,
+)
+from der_flex.security import (
+    AccessPrincipal,
+    AuthenticationError,
+    Authenticator,
+    AuthorizationError,
+    DevelopmentAuthenticator,
+)
+from der_flex.security_audit import (
+    LoggingSecurityAuditRecorder,
+    SecurityAuditEvent,
+    SecurityAuditRecorder,
 )
 
 
@@ -77,9 +95,16 @@ class ReservationRequest(BaseModel):
 def create_app(
     store: OfferStore | None = None,
     reservation_service: ReservationService | None = None,
+    authenticator: Authenticator | None = None,
+    security_audit: SecurityAuditRecorder | None = None,
+    privacy_policy: PrivacyPublicationPolicy | None = None,
+    max_in_flight: int = 64,
 ) -> FastAPI:
     offer_store = store or InMemoryOfferStore()
     reservations = reservation_service or ReservationService(offer_store)
+    identity = authenticator or DevelopmentAuthenticator()
+    audit = security_audit or LoggingSecurityAuditRecorder()
+    privacy = privacy_policy or PrivacyPublicationPolicy()
     app = FastAPI(
         title="DER Flex Aggregation API",
         version=__version__,
@@ -87,14 +112,50 @@ def create_app(
     )
     app.state.offer_store = offer_store
     app.state.reservation_service = reservations
+    app.state.authenticator = identity
+    app.state.security_audit = audit
+    app.state.privacy_policy = privacy
     metrics = MetricsRegistry()
+    bearer_scheme = HTTPBearer(auto_error=False, bearerFormat="JWT")
     app.add_middleware(RequestBodyLimitMiddleware, max_bytes=32_768)
+    app.add_middleware(
+        ConcurrencyLimitMiddleware,
+        metrics=metrics,
+        max_in_flight=max_in_flight,
+    )
     app.add_middleware(StructuredLoggingMiddleware, metrics=metrics)
 
+    def require_access(scope: str):  # type: ignore[no-untyped-def]
+        def dependency(
+            credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
+            authorization: Annotated[str | None, Header(alias="Authorization")] = None,
+        ) -> AccessPrincipal:
+            token = credentials.credentials if credentials is not None else None
+            if (
+                authorization is not None
+                and credentials is None
+                and not isinstance(identity, DevelopmentAuthenticator)
+            ):
+                raise AuthenticationError("invalid_authorization_scheme")
+            principal = identity.authenticate(token)
+            principal.require_scope(scope)
+            return principal
+
+        return dependency
+
+    def require_zone(principal: AccessPrincipal, zone_id: str) -> None:
+        principal.require_zone(zone_id)
+
+    def consume_privacy_budget(principal: AccessPrincipal) -> datetime:
+        epoch = privacy.publication_epoch()
+        if not offer_store.consume_privacy_query(
+            principal.tenant_id, epoch, privacy.queries_per_interval
+        ):
+            raise PrivacyQueryBudgetExceeded
+        return epoch
+
     @app.exception_handler(RequestValidationError)
-    async def validation_handler(
-        _request: Request, error: RequestValidationError
-    ) -> JSONResponse:
+    async def validation_handler(_request: Request, error: RequestValidationError) -> JSONResponse:
         # Never reflect invalid raw values: NaN/Infinity are not JSON serializable and
         # request bodies may contain sensitive data.
         details = [
@@ -106,6 +167,48 @@ def create_app(
             for item in error.errors()
         ]
         return JSONResponse(status_code=422, content={"detail": details})
+
+    @app.exception_handler(AuthenticationError)
+    async def authentication_handler(request: Request, error: AuthenticationError) -> JSONResponse:
+        audit.record(_audit_event(request, error.code))
+        return JSONResponse(
+            status_code=401,
+            headers={"WWW-Authenticate": "Bearer"},
+            content={"detail": "authentication required"},
+        )
+
+    @app.exception_handler(AuthorizationError)
+    async def authorization_handler(request: Request, error: AuthorizationError) -> JSONResponse:
+        audit.record(_audit_event(request, error.code))
+        return JSONResponse(status_code=404, content={"detail": "not found"})
+
+    @app.exception_handler(PrivacyQueryRejected)
+    async def privacy_query_handler(request: Request, error: PrivacyQueryRejected) -> JSONResponse:
+        audit.record(_audit_event(request, error.code))
+        return JSONResponse(status_code=422, content={"detail": "invalid publication window"})
+
+    @app.exception_handler(PrivacyQueryBudgetExceeded)
+    async def privacy_budget_handler(
+        request: Request, _error: PrivacyQueryBudgetExceeded
+    ) -> JSONResponse:
+        audit.record(_audit_event(request, "privacy_query_budget"))
+        return JSONResponse(
+            status_code=429,
+            headers={"Retry-After": str(privacy.interval_minutes * 60)},
+            content={"detail": "publication query budget exhausted"},
+        )
+
+    @app.exception_handler(psycopg.Error)
+    async def database_unavailable_handler(
+        _request: Request, _error: psycopg.Error
+    ) -> JSONResponse:
+        # Treat the database as a mandatory dependency and never expose its DSN,
+        # SQL text or driver diagnostic to callers during an outage.
+        return JSONResponse(
+            status_code=503,
+            headers={"Retry-After": "1"},
+            content={"detail": "service dependency unavailable"},
+        )
 
     @app.exception_handler(InsufficientCapacity)
     @app.exception_handler(IdempotencyConflict)
@@ -149,24 +252,56 @@ def create_app(
     def get_metrics() -> PlainTextResponse:
         return PlainTextResponse(metrics.render_prometheus())
 
+    @app.get("/api/v1/admin/security/status")
+    def get_security_status(
+        _principal: Annotated[AccessPrincipal, Depends(require_access("admin:read"))],
+    ) -> dict[str, str]:
+        return {"status": "configured", "authenticator": type(identity).__name__}
+
     @app.get("/api/v1/flexibility/zones")
-    def get_flexibility_zones() -> dict[str, list[str]]:
-        return {"data": offer_store.zones()}
+    def get_flexibility_zones(
+        principal: Annotated[AccessPrincipal, Depends(require_access("flexibility:read"))],
+    ) -> dict[str, list[str]]:
+        consume_privacy_budget(principal)
+        # Return the fixed authorization catalogue. A data-driven zone list would
+        # reveal when a cohort crosses the privacy threshold.
+        zones = (
+            offer_store.zones(tenant_id=principal.tenant_id)
+            if "*" in principal.zone_ids
+            else sorted(principal.zone_ids)
+        )
+        return {"data": zones}
 
     @app.get("/api/v1/flexibility", response_model=FlexibilityResponse)
     def get_flexibility(
+        principal: Annotated[AccessPrincipal, Depends(require_access("flexibility:read"))],
         zone_id: Annotated[str, Query(min_length=1, max_length=64)],
         start: Annotated[datetime, Query(alias="from")],
         end: Annotated[datetime, Query(alias="to")],
     ) -> FlexibilityResponse:
+        require_zone(principal, zone_id)
         if start.tzinfo is None or end.tzinfo is None:
             raise HTTPException(status_code=422, detail="from and to must include a timezone")
         if end <= start:
             raise HTTPException(status_code=422, detail="to must be after from")
-        if end - start > timedelta(days=7):
-            raise HTTPException(status_code=422, detail="query window cannot exceed seven days")
-        aggregates = offer_store.query(zone_id, start, end)
-        return FlexibilityResponse(data=reservations.public_residual_capacity(aggregates))
+        privacy.validate_window(start, end)
+        epoch = consume_privacy_budget(principal)
+        aggregates = offer_store.query(zone_id, start, end, tenant_id=principal.tenant_id)
+        public = [
+            item
+            for item in reservations.public_residual_capacity(aggregates)
+            if privacy.eligible(item)
+        ]
+        candidates = [privacy.sanitize(item, epoch) for item in public]
+        snapshot = offer_store.publish_privacy_snapshot(
+            tenant_id=principal.tenant_id,
+            zone_id=zone_id,
+            publication_epoch=epoch,
+            start=start,
+            end=end,
+            candidates=candidates,
+        )
+        return FlexibilityResponse(data=snapshot)
 
     @app.post(
         "/api/v1/reservations",
@@ -174,13 +309,16 @@ def create_app(
         status_code=status.HTTP_201_CREATED,
     )
     def create_reservation(
+        principal: Annotated[AccessPrincipal, Depends(require_access("reservation:write"))],
         request: ReservationRequest,
         idempotency_key: Annotated[
             str, Header(alias="Idempotency-Key", min_length=1, max_length=128)
         ],
     ) -> Reservation:
+        require_zone(principal, request.zone_id)
         return reservations.create(
             idempotency_key=idempotency_key,
+            tenant_id=principal.tenant_id,
             zone_id=request.zone_id,
             interval_start=request.interval_start,
             interval_end=request.interval_end,
@@ -191,22 +329,58 @@ def create_app(
         )
 
     @app.get("/api/v1/reservations/{reservation_id}", response_model=Reservation)
-    def get_reservation(reservation_id: UUID) -> Reservation:
-        return reservations.get(reservation_id)
+    def get_reservation(
+        reservation_id: UUID,
+        principal: Annotated[AccessPrincipal, Depends(require_access("reservation:read"))],
+    ) -> Reservation:
+        reservation = reservations.get(reservation_id)
+        principal.require_tenant(reservation.tenant_id)
+        require_zone(principal, reservation.zone_id)
+        return reservation
 
     @app.delete("/api/v1/reservations/{reservation_id}", response_model=Reservation)
-    def cancel_reservation(reservation_id: UUID) -> Reservation:
+    def cancel_reservation(
+        reservation_id: UUID,
+        principal: Annotated[AccessPrincipal, Depends(require_access("reservation:write"))],
+    ) -> Reservation:
+        reservation = reservations.get(reservation_id)
+        principal.require_tenant(reservation.tenant_id)
+        require_zone(principal, reservation.zone_id)
         return reservations.cancel(reservation_id)
 
     @app.post(
         "/api/v1/reservations/{reservation_id}/activate",
         response_model=Activation,
     )
-    def activate_reservation(reservation_id: UUID) -> Activation:
+    def activate_reservation(
+        reservation_id: UUID,
+        principal: Annotated[AccessPrincipal, Depends(require_access("activation:write"))],
+    ) -> Activation:
+        reservation = reservations.get(reservation_id)
+        principal.require_tenant(reservation.tenant_id)
+        require_zone(principal, reservation.zone_id)
         return reservations.activate(reservation_id)
 
     @app.get("/api/v1/activations/{activation_id}", response_model=Activation)
-    def get_activation(activation_id: UUID) -> Activation:
-        return reservations.get_activation(activation_id)
+    def get_activation(
+        activation_id: UUID,
+        principal: Annotated[AccessPrincipal, Depends(require_access("activation:read"))],
+    ) -> Activation:
+        activation = reservations.get_activation(activation_id)
+        reservation = reservations.get(activation.reservation_id)
+        principal.require_tenant(reservation.tenant_id)
+        require_zone(principal, reservation.zone_id)
+        return activation
 
     return app
+
+
+def _audit_event(request: Request, reason: str) -> SecurityAuditEvent:
+    route = request.scope.get("route")
+    route_template = getattr(route, "path", "unmatched")
+    return SecurityAuditEvent(
+        outcome="denied",
+        reason=reason,
+        method=request.method,
+        route=route_template,
+    )

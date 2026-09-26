@@ -1,9 +1,38 @@
 # Changelog
 
+## Unreleased
+
+- Complete milestone 15 with RSA-signed OIDC/JWT verification, rotating JWKS keys,
+  issuer/audience/time validation and mandatory tenant identity.
+- Enforce independent read, reservation, activation and administration scopes across
+  every business route and declare Bearer authentication in OpenAPI.
+- Audit every authentication and authorization denial using route templates without
+  recording tokens, identities, tenant/zone identifiers, UUIDs, payloads or telemetry.
+- Persist and partition resources, offers, reservations, capacity, privacy state and
+  idempotency by tenant across memory and PostgreSQL backends.
+- Add immutable 15-minute publication snapshots, aligned/bounded windows, tenant-wide
+  query budgets, fixed zone catalogues and conservative aggregate quantisation.
+- Persist privacy snapshots and rate budgets atomically across PostgreSQL processes and
+  document the attacker model, utility loss, non-DP decision and residual risk.
+- Enforce an absolute public floor of ten participants and require the JWT `nbf` claim,
+  closing the medium and informational findings from the joint v7.0 review.
+- Complete milestone 17 with a TLS/PostgreSQL/multi-worker SLO gate, durable outbox
+  backlog recovery, database fault injection and invariant checks under load.
+- Add bounded admission control, latency/in-flight/shedding Prometheus metrics,
+  sanitized database-outage responses and serialized multi-worker schema startup.
+
 Los cambios notables se documentan aquí siguiendo Keep a Changelog y versionado
 semántico.
 
 ## [Unreleased]
+
+### Added
+
+- Frontera de autorización inyectable para la API con identidad de servicio, tenant,
+  ámbitos separados y propiedad exclusiva de zonas; incluye pruebas de tokens inválidos,
+  escalada de ámbito, acceso cruzado por zona y UUID de reserva.
+- `tenant_id` persistido en recursos, ofertas, reservas, agregados internos y celdas de
+  privacidad, con capacidad, locks e idempotencia separados también en PostgreSQL.
 
 ## [0.2.0] - 2026-09-25
 

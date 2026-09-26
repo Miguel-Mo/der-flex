@@ -12,6 +12,7 @@ license = "Apache-2.0"
 dependencies = [
   "fastapi==0.141.1",
   "psycopg[binary]==3.3.6",
+  "PyJWT[crypto]==2.15.0",
   "s2-python[ws]==0.9.1",
   "tzdata==2026.4",
   "uvicorn==0.52.4",

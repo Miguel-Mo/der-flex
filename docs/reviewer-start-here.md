@@ -1,4 +1,4 @@
-# DER Flex 0.2.0 — inicio de la revisión v5.0
+# DER Flex 0.2.0 — inicio de la revisión v8.0
 
 Este expediente está diseñado para revisarse sin acceder al sitio web del proyecto.
 No confíe inicialmente en `evidence.json`: verifique primero los bytes recibidos.
@@ -31,6 +31,18 @@ selectivamente `.py`, wheels o directorios anidados.
 8. Para OUT01 proporcione PostgreSQL real mediante `DER_FLEX_TEST_DATABASE_URL` y
    ejecute `python -m pytest -q source/tests/test_postgres_outbox.py` desde la raíz
    extraída. Sin esa ejecución, OUT01 debe permanecer `NOT_VERIFIABLE`.
+9. Para AUTH01 ejecute `tests/test_oidc_security.py` y
+   `tests/test_api_authorization.py`; pruebe también la matriz completa con PostgreSQL.
+   No sustituya firma, emisor, audiencia, tiempo, tenant y rotación por inspección
+   narrativa ni confunda claves RSA locales con certificación de un IdP operativo.
+10. Para PRIV02 ejecute `tests/test_privacy_publication.py` y las pruebas PostgreSQL de
+    presupuesto/snapshot. Compare ventanas solapadas e identidades múltiples antes y
+    después de cambios, reservas y reinicios. Lea el modelo de amenazas: no se reclama
+    anonimización formal ni privacidad diferencial.
+11. Para PERF02 ejecute `python source/scripts/verify_pilot_slo.py` con Docker real.
+    El script debe atravesar TLS, dos workers API, PostgreSQL y dos workers de outbox;
+    exige shedding, recuperación de backlog y una pausa real de PostgreSQL. Si no puede
+    crear esa topología, PERF02 debe permanecer `NOT_VERIFIABLE`.
 
 ## Comprobación offline mínima
 
@@ -51,6 +63,7 @@ En Linux x86-64 sustituya el ejecutable por `.review-venv/bin/python`.
 ## Alcance honesto
 
 El objetivo verificable es una publicación experimental. Docker, firma/tag públicos,
-esquema oficial OpenADR, laboratorios externos, autenticación, aislamiento multi-tenant
-y administración segura no se declaran completados. El uso con datos o DER reales continúa en
-`NO-GO`.
+esquema oficial OpenADR, laboratorios externos y certificación de un IdP operativo no
+se declaran completados. Autenticación OIDC, ámbitos, aislamiento multi-tenant y el gate
+local de carga/resiliencia sí se declaran implementados bajo AUTH01 y PERF02. El uso con
+datos o DER reales continúa en `NO-GO` por los hitos externos todavía abiertos.

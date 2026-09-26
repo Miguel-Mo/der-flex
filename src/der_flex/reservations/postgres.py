@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS der_flex_schema_migrations (
 );
 CREATE TABLE IF NOT EXISTS der_flex_reservations (
     reservation_id uuid PRIMARY KEY,
+    tenant_id text NOT NULL DEFAULT 'development' CHECK (tenant_id <> ''),
     correlation_id uuid NOT NULL,
     idempotency_key text NOT NULL UNIQUE,
     request_fingerprint text NOT NULL,
@@ -138,6 +139,7 @@ CREATE TABLE IF NOT EXISTS der_flex_outbox (
 CREATE INDEX IF NOT EXISTS der_flex_outbox_claim_idx
     ON der_flex_outbox (status, available_at, created_at);
 CREATE TABLE IF NOT EXISTS der_flex_public_residuals (
+    tenant_id text NOT NULL DEFAULT 'development' CHECK (tenant_id <> ''),
     zone_id text NOT NULL,
     interval_start timestamptz NOT NULL,
     interval_end timestamptz NOT NULL,
@@ -151,7 +153,7 @@ CREATE TABLE IF NOT EXISTS der_flex_public_residuals (
         upward_capacity_kw >= 0 AND downward_capacity_kw >= 0
         AND upward_energy_kwh >= 0 AND downward_energy_kwh >= 0
     ),
-    PRIMARY KEY (zone_id, interval_start, interval_end, consequence_type)
+    PRIMARY KEY (tenant_id, zone_id, interval_start, interval_end, consequence_type)
 );
 INSERT INTO der_flex_schema_migrations (version) VALUES (1)
 ON CONFLICT (version) DO NOTHING;
@@ -194,13 +196,35 @@ BEGIN
 END $$;
 INSERT INTO der_flex_schema_migrations (version) VALUES (3)
 ON CONFLICT (version) DO NOTHING;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM der_flex_schema_migrations WHERE version = 4
+    ) THEN
+        ALTER TABLE der_flex_reservations
+            ADD COLUMN IF NOT EXISTS tenant_id text NOT NULL DEFAULT 'development';
+        ALTER TABLE der_flex_public_residuals
+            ADD COLUMN IF NOT EXISTS tenant_id text NOT NULL DEFAULT 'development';
+        ALTER TABLE der_flex_public_residuals
+            DROP CONSTRAINT IF EXISTS der_flex_public_residuals_pkey;
+        ALTER TABLE der_flex_public_residuals
+            ADD PRIMARY KEY (
+                tenant_id, zone_id, interval_start, interval_end, consequence_type
+            );
+    END IF;
+END $$;
+INSERT INTO der_flex_schema_migrations (version) VALUES (4)
+ON CONFLICT (version) DO NOTHING;
 """
+
+SCHEMA_MIGRATION_LOCK = "der-flex-schema-migration"
 
 ACTIVE_STATUSES = ("CONFIRMED", "ACTIVATED", "COMPLETED", "FAILED")
 
 
 def _reservation(row: dict[str, Any]) -> Reservation:
     return Reservation(
+        tenant_id=row["tenant_id"],
         reservation_id=row["reservation_id"],
         correlation_id=row["correlation_id"],
         zone_id=row["zone_id"],
@@ -276,15 +300,14 @@ class PostgresReservationUnitOfWork:
         ).fetchall()
         return tuple(Allocation(**row) for row in rows)
 
-    def reserved_for_offer(
-        self, offer: FlexibilityOffer, direction: FlexibilityDirection
-    ) -> float:
+    def reserved_for_offer(self, offer: FlexibilityOffer, direction: FlexibilityDirection) -> float:
         row = self.connection.execute(
             """
             SELECT COALESCE(SUM(a.power_kw), 0.0) AS reserved
             FROM der_flex_allocations a
             JOIN der_flex_reservations r USING (reservation_id)
             WHERE a.resource_id = %s
+              AND r.tenant_id = %s
               AND r.zone_id = %s
               AND r.interval_start = %s
               AND r.interval_end = %s
@@ -294,6 +317,7 @@ class PostgresReservationUnitOfWork:
             """,
             (
                 offer.resource_id,
+                offer.tenant_id,
                 offer.zone_id,
                 offer.interval_start,
                 offer.interval_end,
@@ -318,16 +342,17 @@ class PostgresReservationUnitOfWork:
         self.connection.execute(
             """
             INSERT INTO der_flex_reservations (
-                reservation_id, correlation_id, idempotency_key, request_fingerprint,
+                reservation_id, tenant_id, correlation_id, idempotency_key, request_fingerprint,
                 zone_id, interval_start, interval_end, direction, requested_power_kw,
                 allocated_power_kw, participant_count, consequence_type, product_class,
                 status, created_at, expires_at, callback_url
             ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
             )
             """,
             (
                 reservation.reservation_id,
+                reservation.tenant_id,
                 reservation.correlation_id,
                 idempotency_key,
                 fingerprint,
@@ -497,7 +522,8 @@ class PostgresReservationUnitOfWork:
             SELECT upward_capacity_kw, downward_capacity_kw,
                    upward_energy_kwh, downward_energy_kwh
             FROM der_flex_public_residuals
-            WHERE zone_id = %s AND interval_start = %s AND interval_end = %s
+            WHERE tenant_id = %s AND zone_id = %s
+              AND interval_start = %s AND interval_end = %s
               AND consequence_type = %s
             """,
             self._cell_values(cell),
@@ -515,11 +541,11 @@ class PostgresReservationUnitOfWork:
         self.connection.execute(
             """
             INSERT INTO der_flex_public_residuals (
-                zone_id, interval_start, interval_end, consequence_type,
+                tenant_id, zone_id, interval_start, interval_end, consequence_type,
                 upward_capacity_kw, downward_capacity_kw,
                 upward_energy_kwh, downward_energy_kwh
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (zone_id, interval_start, interval_end, consequence_type)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (tenant_id, zone_id, interval_start, interval_end, consequence_type)
             DO UPDATE SET
                 upward_capacity_kw = EXCLUDED.upward_capacity_kw,
                 downward_capacity_kw = EXCLUDED.downward_capacity_kw,
@@ -533,7 +559,8 @@ class PostgresReservationUnitOfWork:
         self.connection.execute(
             """
             UPDATE der_flex_public_residuals SET suppressed = true
-            WHERE zone_id = %s AND interval_start = %s AND interval_end = %s
+            WHERE tenant_id = %s AND zone_id = %s
+              AND interval_start = %s AND interval_end = %s
               AND consequence_type = %s
             """,
             self._cell_values(cell),
@@ -543,7 +570,8 @@ class PostgresReservationUnitOfWork:
         row = self.connection.execute(
             """
             SELECT suppressed FROM der_flex_public_residuals
-            WHERE zone_id = %s AND interval_start = %s AND interval_end = %s
+            WHERE tenant_id = %s AND zone_id = %s
+              AND interval_start = %s AND interval_end = %s
               AND consequence_type = %s
             """,
             self._cell_values(cell),
@@ -561,6 +589,10 @@ class PostgresReservationBackend:
 
     def initialize(self) -> None:
         with self._connect() as connection:
+            connection.execute(
+                "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                (SCHEMA_MIGRATION_LOCK,),
+            )
             connection.execute(SCHEMA_SQL)
             connection.commit()
 
@@ -668,11 +700,7 @@ class PostgresReservationBackend:
                 """,
                 (task.event_id,),
             ).fetchone()
-            if (
-                row is None
-                or row["status"] != "PROCESSING"
-                or row["attempts"] != task.attempts
-            ):
+            if row is None or row["status"] != "PROCESSING" or row["attempts"] != task.attempts:
                 return
 
             terminal = delivered or not retryable or row["attempts"] >= max_attempts
