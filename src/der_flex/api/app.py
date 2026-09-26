@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from typing import Annotated, Self
 from uuid import UUID
 
+import psycopg
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, PlainTextResponse
@@ -19,6 +20,7 @@ from der_flex.domain.models import (
 )
 from der_flex.domain.store import InMemoryOfferStore, OfferStore
 from der_flex.observability import (
+    ConcurrencyLimitMiddleware,
     MetricsRegistry,
     RequestBodyLimitMiddleware,
     StructuredLoggingMiddleware,
@@ -96,6 +98,7 @@ def create_app(
     authenticator: Authenticator | None = None,
     security_audit: SecurityAuditRecorder | None = None,
     privacy_policy: PrivacyPublicationPolicy | None = None,
+    max_in_flight: int = 64,
 ) -> FastAPI:
     offer_store = store or InMemoryOfferStore()
     reservations = reservation_service or ReservationService(offer_store)
@@ -115,6 +118,11 @@ def create_app(
     metrics = MetricsRegistry()
     bearer_scheme = HTTPBearer(auto_error=False, bearerFormat="JWT")
     app.add_middleware(RequestBodyLimitMiddleware, max_bytes=32_768)
+    app.add_middleware(
+        ConcurrencyLimitMiddleware,
+        metrics=metrics,
+        max_in_flight=max_in_flight,
+    )
     app.add_middleware(StructuredLoggingMiddleware, metrics=metrics)
 
     def require_access(scope: str):  # type: ignore[no-untyped-def]
@@ -188,6 +196,18 @@ def create_app(
             status_code=429,
             headers={"Retry-After": str(privacy.interval_minutes * 60)},
             content={"detail": "publication query budget exhausted"},
+        )
+
+    @app.exception_handler(psycopg.Error)
+    async def database_unavailable_handler(
+        _request: Request, _error: psycopg.Error
+    ) -> JSONResponse:
+        # Treat the database as a mandatory dependency and never expose its DSN,
+        # SQL text or driver diagnostic to callers during an outage.
+        return JSONResponse(
+            status_code=503,
+            headers={"Retry-After": "1"},
+            content={"detail": "service dependency unavailable"},
         )
 
     @app.exception_handler(InsufficientCapacity)

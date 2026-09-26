@@ -217,6 +217,8 @@ INSERT INTO der_flex_schema_migrations (version) VALUES (4)
 ON CONFLICT (version) DO NOTHING;
 """
 
+SCHEMA_MIGRATION_LOCK = "der-flex-schema-migration"
+
 ACTIVE_STATUSES = ("CONFIRMED", "ACTIVATED", "COMPLETED", "FAILED")
 
 
@@ -587,6 +589,10 @@ class PostgresReservationBackend:
 
     def initialize(self) -> None:
         with self._connect() as connection:
+            connection.execute(
+                "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                (SCHEMA_MIGRATION_LOCK,),
+            )
             connection.execute(SCHEMA_SQL)
             connection.commit()
 

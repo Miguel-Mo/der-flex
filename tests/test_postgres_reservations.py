@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from multiprocessing import get_context
@@ -8,9 +9,10 @@ from typing import Any
 
 import psycopg
 import pytest
+from psycopg import sql
 
 from der_flex.adapters.s2 import normalize_pebc_offer
-from der_flex.domain import InMemoryOfferStore
+from der_flex.domain import InMemoryOfferStore, PostgresResourceRegistry
 from der_flex.reservations import (
     InsufficientCapacity,
     PostgresReservationBackend,
@@ -129,6 +131,38 @@ def test_schema_records_migration_and_database_invariants(
         "der_flex_activation_counts",
         "der_flex_public_residual_nonnegative",
     } <= constraints
+
+
+def test_fresh_schema_initialization_is_serialized_across_workers() -> None:
+    assert DATABASE_URL is not None
+    schema = f"der_flex_init_{uuid.uuid4().hex}"
+    with psycopg.connect(DATABASE_URL, autocommit=True) as connection:
+        connection.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
+    scoped_dsn = psycopg.conninfo.make_conninfo(
+        DATABASE_URL,
+        options=f"-c search_path={schema}",
+    )
+
+    def initialize(_index: int) -> None:
+        PostgresReservationBackend(scoped_dsn).initialize()
+        PostgresResourceRegistry(scoped_dsn)
+
+    try:
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            list(executor.map(initialize, range(4)))
+        with psycopg.connect(scoped_dsn) as connection:
+            tables = {
+                row[0]
+                for row in connection.execute(
+                    "SELECT tablename FROM pg_tables WHERE schemaname = current_schema()"
+                ).fetchall()
+            }
+        assert {"der_flex_resources", "der_flex_reservations", "der_flex_outbox"} <= tables
+    finally:
+        with psycopg.connect(DATABASE_URL, autocommit=True) as connection:
+            connection.execute(
+                sql.SQL("DROP SCHEMA {} CASCADE").format(sql.Identifier(schema))
+            )
 
 
 def test_tenants_have_independent_capacity_and_idempotency(

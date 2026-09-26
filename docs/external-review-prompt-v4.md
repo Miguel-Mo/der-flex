@@ -1,4 +1,4 @@
-# Prompt de revisión adversarial independiente — bundle v7.1
+# Prompt de revisión adversarial independiente — bundle v8.0
 
 Actúa como auditor independiente y hostil a las afirmaciones. Trabaja únicamente con
 los archivos recibidos y no presupongas que su evidencia es correcta. Si recibes el
@@ -43,6 +43,15 @@ Presta atención especial a los cambios y regresiones de este corte:
    rechazado. Comprueba que las pruebas verticales usan diez recursos en lugar de una
    política pública debilitada. Clasifica cada hallazgo anterior como `RESOLVED`,
    `PARTIAL` u `OPEN`.
+
+0 bis. **Rendimiento y resiliencia PERF02.** No uses el antiguo benchmark ASGI para
+   conceder este claim. Ejecuta `python scripts/verify_pilot_slo.py` con Docker real y
+   examina `pilot-slo-report.json`. Confirma TLS, dos workers API, PostgreSQL separado,
+   dos workers outbox, p50/p95/p99, ráfaga con shedding, backlog `PENDING` recuperado,
+   ausencia de sobreventa y duplicados, snapshot estable, pausa real de PostgreSQL,
+   readiness/negocio `503` y recuperación. Intenta arrancar simultáneamente los workers
+   sobre un esquema vacío para refutar la serialización de migraciones. No conviertas
+   esta puerta acotada de un host en dimensionamiento o SLO contractual.
 
 1. **Bootstrap limpio.** Crea una venv nueva de Python 3.13 sin reutilizar paquetes
    del sistema. Ejecuta
@@ -113,7 +122,7 @@ límite de reproducibilidad de imagen, separado de la validez funcional de PKG01
 Finaliza con dos decisiones separadas: publicación experimental y uso con DER/datos
 reales. Enumera primero los hallazgos nuevos por severidad y después los límites ya
 declarados, para no presentar estos últimos como descubrimientos. Incluye una tabla
-de los 20 claims y una sección específica que diga si el anterior hallazgo medio de
+ de los 21 claims y una sección específica que diga si el anterior hallazgo medio de
 compresión cross-OS queda `RESOLVED`, `PARTIAL` o `OPEN`, con la evidencia que sustenta
    esa decisión. El wheel ya coincidió en una reconstrucción Linux de v4.2. Comprueba
    específicamente si ha desaparecido el vector restante encontrado allí: modos

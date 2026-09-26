@@ -83,6 +83,16 @@
       "residual_limit": "Benchmark local en memoria; no representa red, TLS, base de datos ni carga distribuida."
     },
     {
+      "id": "PERF02",
+      "claim": "La pila TLS con PostgreSQL, dos workers API y dos workers outbox cumple los SLO locales y se recupera sin relajar invariantes.",
+      "status": "PASS_WITH_SCOPE_LIMIT",
+      "implementation_paths": ["scripts/verify_pilot_slo.py", "src/der_flex/observability.py", "compose.yaml", "docs/adr/011-slo-y-degradacion-controlada.md"],
+      "test_nodes": ["tests/test_observability.py::test_metrics_publish_latency_saturation_and_anonymous_labels", "tests/test_observability.py::test_concurrency_limit_sheds_without_blocking_health_or_metrics", "tests/test_observability.py::test_database_errors_are_sanitized_as_retryable_unavailability", "tests/test_pilot_slo.py::test_slo_gate_rejects_excess_latency", "tests/test_postgres_reservations.py::test_fresh_schema_initialization_is_serialized_across_workers"],
+      "commands": ["python scripts/verify_pilot_slo.py"],
+      "evidence_outputs": ["pilot-slo-report.json"],
+      "residual_limit": "Gate acotado a un solo host con certificado e IdP locales; no constituye dimensionamiento multi-host, ensayo prolongado ni SLO contractual."
+    },
+    {
       "id": "SEC01",
       "claim": "pip-audit no comunica vulnerabilidades conocidas en la resolución actual.",
       "status": "PASS_WITH_SCOPE_LIMIT",

@@ -178,9 +178,13 @@ class _PostgresDomainBase:
     def initialize(self) -> None:
         # Imported lazily to keep the domain module independent at import time while
         # still applying the complete ordered schema for standalone callers.
-        from der_flex.reservations.postgres import SCHEMA_SQL
+        from der_flex.reservations.postgres import SCHEMA_MIGRATION_LOCK, SCHEMA_SQL
 
         with self._connect() as connection:
+            connection.execute(
+                "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                (SCHEMA_MIGRATION_LOCK,),
+            )
             connection.execute(SCHEMA_SQL)
             connection.execute(DOMAIN_SCHEMA_SQL)
             connection.commit()

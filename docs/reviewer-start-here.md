@@ -1,4 +1,4 @@
-# DER Flex 0.2.0 — inicio de la revisión v7.1
+# DER Flex 0.2.0 — inicio de la revisión v8.0
 
 Este expediente está diseñado para revisarse sin acceder al sitio web del proyecto.
 No confíe inicialmente en `evidence.json`: verifique primero los bytes recibidos.
@@ -39,6 +39,10 @@ selectivamente `.py`, wheels o directorios anidados.
     presupuesto/snapshot. Compare ventanas solapadas e identidades múltiples antes y
     después de cambios, reservas y reinicios. Lea el modelo de amenazas: no se reclama
     anonimización formal ni privacidad diferencial.
+11. Para PERF02 ejecute `python source/scripts/verify_pilot_slo.py` con Docker real.
+    El script debe atravesar TLS, dos workers API, PostgreSQL y dos workers de outbox;
+    exige shedding, recuperación de backlog y una pausa real de PostgreSQL. Si no puede
+    crear esa topología, PERF02 debe permanecer `NOT_VERIFIABLE`.
 
 ## Comprobación offline mínima
 
@@ -60,6 +64,6 @@ En Linux x86-64 sustituya el ejecutable por `.review-venv/bin/python`.
 
 El objetivo verificable es una publicación experimental. Docker, firma/tag públicos,
 esquema oficial OpenADR, laboratorios externos y certificación de un IdP operativo no
-se declaran completados. Autenticación OIDC, ámbitos y aislamiento multi-tenant sí se
-declaran implementados localmente bajo AUTH01. El uso con datos o DER reales continúa
-en `NO-GO` por los hitos posteriores todavía abiertos.
+se declaran completados. Autenticación OIDC, ámbitos, aislamiento multi-tenant y el gate
+local de carga/resiliencia sí se declaran implementados bajo AUTH01 y PERF02. El uso con
+datos o DER reales continúa en `NO-GO` por los hitos externos todavía abiertos.

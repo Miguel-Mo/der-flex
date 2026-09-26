@@ -16,6 +16,10 @@
   document the attacker model, utility loss, non-DP decision and residual risk.
 - Enforce an absolute public floor of ten participants and require the JWT `nbf` claim,
   closing the medium and informational findings from the joint v7.0 review.
+- Complete milestone 17 with a TLS/PostgreSQL/multi-worker SLO gate, durable outbox
+  backlog recovery, database fault injection and invariant checks under load.
+- Add bounded admission control, latency/in-flight/shedding Prometheus metrics,
+  sanitized database-outage responses and serialized multi-worker schema startup.
 
 Los cambios notables se documentan aquí siguiendo Keep a Changelog y versionado
 semántico.

@@ -24,9 +24,10 @@ from scripts.verify_release import (  # noqa: E402
     sha256,
 )
 
-BUNDLE_NAME = "der-flex-0.2.0-review-bundle-v7.1"
+BUNDLE_NAME = "der-flex-0.2.0-review-bundle-v8.0"
 DEFAULT_BUNDLE = ROOT / "build" / f"{BUNDLE_NAME}.zip"
 DEFAULT_TAR = ROOT / "build" / f"{BUNDLE_NAME}.tar.gz"
+PILOT_SLO_REPORT = ROOT / "build" / "pilot-slo-report.json"
 
 
 def write_deterministic_zip(
@@ -79,6 +80,11 @@ def build_bundle(
     source_manifest = load_json(DEFAULT_OUTPUT / "source-manifest.json")
     if evidence.get("passed") is not True:
         raise RuntimeError("release evidence must pass before bundling")
+    if not PILOT_SLO_REPORT.is_file():
+        raise RuntimeError("pilot SLO report must be generated before bundling")
+    pilot_slo = load_json(PILOT_SLO_REPORT)
+    if pilot_slo.get("passed") is not True:
+        raise RuntimeError("pilot SLO evidence must pass before bundling")
     for entry in source_manifest:
         source = ROOT / entry["path"]
         if (
@@ -100,6 +106,7 @@ def build_bundle(
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, target)
         shutil.copytree(DEFAULT_OUTPUT, stage / "evidence")
+        shutil.copy2(PILOT_SLO_REPORT, stage / "evidence" / PILOT_SLO_REPORT.name)
         top_level = {
             "START-HERE.md": ROOT / "docs" / "reviewer-start-here.md",
             "REVIEW-PROMPT.md": ROOT / "docs" / "external-review-prompt-v4.md",
@@ -142,7 +149,7 @@ def build_bundle(
             f"{sha256(temporary_tar)}  {temporary_tar.name}\n", encoding="utf-8"
         )
         (transport / "START-HERE.txt").write_text(
-            "DER Flex review bundle v7.1 transport container.\n"
+            "DER Flex review bundle v8.0 transport container.\n"
             f"1. Verify TAR-SHA256.txt.\n2. Extract {temporary_tar.name}.\n"
             "3. Enter the extracted directory.\n4. Run: python verify_bundle.py\n"
             "The TAR is canonical; this ZIP intentionally has only three files to avoid "

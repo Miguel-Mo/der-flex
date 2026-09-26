@@ -224,6 +224,11 @@ funcionales pasen.
 
 ## Hito 17 — Rendimiento y resiliencia de la arquitectura real
 
+**Estado:** completado localmente. El gate usa TLS, PostgreSQL efímero, dos workers API,
+dos workers de outbox, carga sostenida, shedding, backlog durable y pausa/recuperación
+de la base de datos. La primera ejecución conforme queda documentada en
+`docs/hito-17-rendimiento-resiliencia.md`; falta repetición independiente.
+
 **Problema a resolver:** el benchmark ASGI en memoria no predice el comportamiento con
 TLS, base de datos, múltiples procesos y colas.
 

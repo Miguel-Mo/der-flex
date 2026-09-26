@@ -15,6 +15,7 @@ estados, evidencias y la presencia de los diez claims originales.
 | C01 | PASS acotado | Sin doble venta entre procesos con PostgreSQL | Backend en memoria limitado a un proceso |
 | S01 | PASS | 108 DER, 432 ofertas y 12 agregados | Flota sintética |
 | PERF01 | PASS acotado | p95 HTTP/ASGI local menor de 500 ms | Sin red, TLS o persistencia |
+| PERF02 | PASS acotado | TLS, PostgreSQL, 2 API workers, 2 outbox workers y fallo recuperado dentro de SLO | Gate acotado a un host; no dimensionamiento contractual |
 | SEC01 | PASS acotado | Auditoría puntual y SBOM transitivo | La base de vulnerabilidades cambia |
 | PKG01 | PASS acotado | Imagen Linux ejecutada y endurecida | Falta repetición independiente |
 | ORD01 | PASS acotado | Rechazo durable de replay y sesiones antiguas | Memoria sigue siendo local |

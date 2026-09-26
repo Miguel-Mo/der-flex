@@ -36,6 +36,7 @@ py -3.13 -m venv .venv
 .\.venv\Scripts\python.exe scripts\s2_pebc_smoke.py
 .\.venv\Scripts\python.exe -m pytest
 .\.venv\Scripts\python.exe scripts\verify_release.py
+.\.venv\Scripts\python.exe scripts\verify_pilot_slo.py
 .\.venv\Scripts\python.exe scripts\build_review_bundle.py
 .\.venv\Scripts\der-flex-demo.exe
 ```
@@ -92,7 +93,7 @@ dependencias desde `vendor/wheelhouse` usando los hashes de `requirements-runtim
 El wheelhouse cubre CPython 3.13 en Windows AMD64 y Linux x86-64.
 La instalación editable usa `requirements-runtime.constraints` para conservar ese mismo
 cierre de producción aunque aparezcan versiones transitivas nuevas en el índice.
-El segundo script genera un TAR canónico v7.1 y un ZIP de transporte de tres archivos.
+El segundo script genera un TAR canónico v8.0 y un ZIP de transporte de tres archivos.
 Un auditor puede verificarlo con Python estándar sin depender del sitio web ni de que
 su plataforma conserve extensiones de código dentro de ZIP anidados.
 
@@ -106,6 +107,14 @@ imagen y materiales por hash sin fingir una firma de identidad.
 El digest identifica exactamente la imagen ensayada; no se afirma que dos builds
 Docker independientes produzcan una imagen idéntica byte a byte.
 
+`python scripts/verify_pilot_slo.py` levanta una pila efímera distinta de Compose:
+PostgreSQL Linux, dos workers API con TLS y dos workers de outbox. Mide p50/p95/p99,
+fuerza una ráfaga hasta activar backpressure, recupera un backlog durable y pausa la
+base de datos para verificar liveness, readiness, respuesta `503`, privacidad e
+invariantes al recuperarse. Escribe `build/pilot-slo-report.json`. Los límites y el
+alcance exacto están documentados en
+[`docs/hito-17-rendimiento-resiliencia.md`](docs/hito-17-rendimiento-resiliencia.md).
+
 ## Documentación
 
 - [Plan de ejecución](PLAN.md)
@@ -115,6 +124,7 @@ Docker independientes produzcan una imagen idéntica byte a byte.
 - [Resultado del Hito 4](docs/hito-4-openadr.md)
 - [Resultado del Hito 5](docs/hito-5-endurecimiento.md)
 - [Preparación del Hito 6](docs/hito-6-publicacion.md)
+- [Resultado del Hito 17](docs/hito-17-rendimiento-resiliencia.md)
 - [Matriz de trazabilidad](docs/traceability.md)
 - [Arquitectura](docs/architecture.md)
 - [Cómo contribuir](CONTRIBUTING.md)
@@ -147,7 +157,8 @@ entonces pasa a `COMPLETED` o `FAILED`. La entrega es *al menos una vez*, no exa
 una vez. El aceptador de recursos de la demo es sintético y debe sustituirse por un
 adaptador S2 real.
 
-La autenticación OIDC, los ámbitos, el aislamiento multi-tenant y el endurecimiento local
-frente a consultas correlacionadas están implementados. La revisión independiente conjunta
-de los hitos 15 y 16 sigue pendiente; además faltan operación distribuida completa y
-validación protocolaria externa. Esta rama no está preparada para DER o datos reales.
+La autenticación OIDC, los ámbitos, el aislamiento multi-tenant, el endurecimiento local
+frente a consultas correlacionadas y la puerta local de carga/resiliencia están
+implementados. Sus métricas son una regresión acotada de un solo host, no un
+dimensionamiento contractual. Faltan validación protocolaria, identidad y operación
+externas. Esta rama no está preparada para DER o datos reales.

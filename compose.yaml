@@ -15,10 +15,13 @@ services:
 
   der-flex:
     build: .
+    command: ["uvicorn", "der_flex.demo:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--no-access-log"]
     environment:
       DER_FLEX_DATABASE_URL: postgresql://der_flex:der_flex_local@postgres:5432/der_flex
       DER_FLEX_AUTH_MODE: ${DER_FLEX_AUTH_MODE:-development}
       DER_FLEX_WEBHOOK_SECRET: ${DER_FLEX_WEBHOOK_SECRET:-der-flex-local-only-change-me}
+      DER_FLEX_MAX_IN_FLIGHT: ${DER_FLEX_MAX_IN_FLIGHT:-64}
+      DER_FLEX_PROCESS_OUTBOX_ON_ACTIVATE: "0"
     depends_on:
       postgres:
         condition: service_healthy

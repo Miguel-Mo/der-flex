@@ -60,13 +60,19 @@ def build_demo_app() -> FastAPI:
         ):
             store.upsert(offer)
     if backend:
-        reservation_service = ReservationService(store, backend=backend)
+        process_outbox = os.getenv("DER_FLEX_PROCESS_OUTBOX_ON_ACTIVATE", "1") == "1"
+        reservation_service = ReservationService(
+            store,
+            backend=backend,
+            process_outbox_on_activate=process_outbox,
+        )
     else:
         reservation_service = ReservationService(store)
     app = create_app(
         store,
         reservation_service,
         authenticator=authenticator_from_environment(production=database_url is not None),
+        max_in_flight=int(os.getenv("DER_FLEX_MAX_IN_FLIGHT", "64")),
     )
     app.state.demo_interval = (start, start + timedelta(hours=1))
     return app
