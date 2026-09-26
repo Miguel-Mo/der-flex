@@ -14,6 +14,8 @@
   query budgets, fixed zone catalogues and conservative aggregate quantisation.
 - Persist privacy snapshots and rate budgets atomically across PostgreSQL processes and
   document the attacker model, utility loss, non-DP decision and residual risk.
+- Enforce an absolute public floor of ten participants and require the JWT `nbf` claim,
+  closing the medium and informational findings from the joint v7.0 review.
 
 Los cambios notables se documentan aquí siguiendo Keep a Changelog y versionado
 semántico.

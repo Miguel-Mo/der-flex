@@ -1,7 +1,7 @@
 # Modelo de amenazas y política de publicación de flexibilidad
 
-**Estado:** política local implementada; revisión independiente pendiente junto con los
-hitos 15 y 16.
+**Estado:** política local implementada; hallazgo v7.0 sobre el suelo `k=10` corregido y
+pendiente de reverificación independiente conjunta.
 
 ## Activos y adversarios
 
@@ -27,6 +27,9 @@ eléctrica o un atacante con acceso a las tablas privadas.
 | Energía | pasos de 0,25 kWh | Energía se redondea hacia abajo |
 | Confianza | pasos de 0,05 | Reduce precisión auxiliar |
 | Participantes | bloques de 5 hacia abajo | No publica el tamaño exacto |
+
+El suelo de diez participantes es una invariancia de código: intentar construir una
+política pública con un valor inferior falla, aunque el almacén interno use otro umbral.
 
 Las zonas proceden del catálogo autorizado del token, nunca de la presencia instantánea
 de ofertas. Una celda cambia a supresión permanente si cambia la cohorte, cualquier

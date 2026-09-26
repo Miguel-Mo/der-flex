@@ -24,7 +24,7 @@ from scripts.verify_release import (  # noqa: E402
     sha256,
 )
 
-BUNDLE_NAME = "der-flex-0.2.0-review-bundle-v7.0"
+BUNDLE_NAME = "der-flex-0.2.0-review-bundle-v7.1"
 DEFAULT_BUNDLE = ROOT / "build" / f"{BUNDLE_NAME}.zip"
 DEFAULT_TAR = ROOT / "build" / f"{BUNDLE_NAME}.tar.gz"
 
@@ -142,7 +142,7 @@ def build_bundle(
             f"{sha256(temporary_tar)}  {temporary_tar.name}\n", encoding="utf-8"
         )
         (transport / "START-HERE.txt").write_text(
-            "DER Flex review bundle v7.0 transport container.\n"
+            "DER Flex review bundle v7.1 transport container.\n"
             f"1. Verify TAR-SHA256.txt.\n2. Extract {temporary_tar.name}.\n"
             "3. Enter the extracted directory.\n4. Run: python verify_bundle.py\n"
             "The TAR is canonical; this ZIP intentionally has only three files to avoid "

@@ -96,7 +96,7 @@ class OIDCJWTAuthenticator:
                 audience=self._audience,
                 issuer=self._issuer,
                 leeway=self._leeway_seconds,
-                options={"require": ["exp", "iat", "iss", "aud", "sub", "tenant_id"]},
+                options={"require": ["exp", "iat", "nbf", "iss", "aud", "sub", "tenant_id"]},
             )
             return self._principal_from_claims(cast(dict[str, Any], claims))
         except (jwt.PyJWTError, ValueError, TypeError, KeyError):

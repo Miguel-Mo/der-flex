@@ -205,7 +205,8 @@ y todos los rechazos quedan auditados sin registrar secretos o telemetría domé
 **Estado:** implementación local completada; revisión independiente pendiente. Están
 aplicados catálogo fijo de zonas, ventanas/cadencia UTC, snapshots inmutables,
 cuantización y presupuesto compartido por tenant con persistencia PostgreSQL. La revisión
-independiente se realizará junto con el hito 15 al terminar la verificación de release.
+v7.0 confirmó el diseño y detectó que `k=10` podía rebajarse por inyección; el suelo ya
+está forzado en código y queda pendiente su reverificación incremental junto con `nbf`.
 
 **Problema a resolver:** la supresión actual bloquea los deltas conocidos, pero no ofrece
 una garantía formal frente a vínculo, inferencia, múltiples identidades o reinicios.

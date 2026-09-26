@@ -4,14 +4,14 @@ Estos valores sirven para detectar divergencias. El auditor debe reproducirlos c
 su entorno lo permita.
 
 - `verify_bundle.py`: PASS; todos los hashes y archivos coinciden.
-- pytest sin PostgreSQL: 134 pruebas superadas, 23 omitidas y un aviso upstream
-  Starlette/AnyIO. Con `DER_FLEX_TEST_DATABASE_URL`: 157 pruebas superadas.
+- pytest sin PostgreSQL: 136 pruebas superadas, 23 omitidas y un aviso upstream
+  Starlette/AnyIO. Con `DER_FLEX_TEST_DATABASE_URL`: 159 pruebas superadas.
 - Ruff: sin incidencias.
 - mypy: sin incidencias en los 66 archivos Python de `src/`, `scripts/` y `tests/`.
 - S2: 16 mensajes wire validados.
 - fuzzing: 1.205 entradas deterministas por ejecución.
 - mutación dirigida: 6/6 mutantes eliminados, 100 %.
-- trazabilidad: 20 claims y 112 referencias válidas.
+- trazabilidad: 20 claims y 114 referencias válidas.
 - SBOM: 22 componentes transitivos y 30 relaciones.
 - wheelhouse: 27 wheels, 22 componentes, hashes coincidentes.
 - instalación offline: `pip check` limpio, versión 0.2.0 y 15 rutas.

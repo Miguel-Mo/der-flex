@@ -92,7 +92,7 @@ dependencias desde `vendor/wheelhouse` usando los hashes de `requirements-runtim
 El wheelhouse cubre CPython 3.13 en Windows AMD64 y Linux x86-64.
 La instalación editable usa `requirements-runtime.constraints` para conservar ese mismo
 cierre de producción aunque aparezcan versiones transitivas nuevas en el índice.
-El segundo script genera un TAR canónico v7.0 y un ZIP de transporte de tres archivos.
+El segundo script genera un TAR canónico v7.1 y un ZIP de transporte de tres archivos.
 Un auditor puede verificarlo con Python estándar sin depender del sitio web ni de que
 su plataforma conserve extensiones de código dentro de ZIP anidados.
 

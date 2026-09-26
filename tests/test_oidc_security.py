@@ -38,6 +38,7 @@ def token(
     issuer: str = ISSUER,
     audience: str = AUDIENCE,
     claims: dict[str, Any] | None = None,
+    omit_claims: frozenset[str] = frozenset(),
 ) -> str:
     now = datetime.now(UTC)
     payload: dict[str, Any] = {
@@ -48,9 +49,12 @@ def token(
         "scope": "flexibility:read reservation:write",
         "zones": ["north"],
         "iat": now,
+        "nbf": now - timedelta(seconds=1),
         "exp": now + timedelta(minutes=5),
     }
     payload.update(claims or {})
+    for claim in omit_claims:
+        payload.pop(claim, None)
     return jwt.encode(payload, key, algorithm="RS256", headers={"kid": kid})
 
 
@@ -118,6 +122,11 @@ def test_oidc_rejects_unknown_key_missing_token_and_insecure_configuration(
             audience=AUDIENCE,
             jwks_url=JWKS_URL,
         )
+
+
+def test_oidc_requires_not_before_claim(keys: dict[str, Any]) -> None:
+    with pytest.raises(AuthenticationError, match="invalid_token"):
+        authenticator(keys).authenticate(token(keys["key-1"], omit_claims=frozenset({"nbf"})))
 
 
 def test_runtime_authentication_is_explicit_for_production(monkeypatch: pytest.MonkeyPatch) -> None:

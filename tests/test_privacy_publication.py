@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 
 from der_flex.api.app import create_app
@@ -209,3 +210,8 @@ def test_policy_rejects_windows_larger_than_the_public_catalog() -> None:
         assert error.code == "window_too_large"
     else:
         raise AssertionError("oversized privacy window was accepted")
+
+
+def test_public_privacy_threshold_cannot_be_configured_below_ten() -> None:
+    with pytest.raises(ValueError, match="cannot be lower than 10"):
+        PrivacyPublicationPolicy(minimum_participants=9)

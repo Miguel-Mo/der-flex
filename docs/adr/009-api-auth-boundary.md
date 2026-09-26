@@ -18,7 +18,8 @@ zona no solapada entre tenants.
 
 En ejecución persistente, el arranque exige seleccionar explícitamente `oidc` o
 `development`. El modo OIDC valida firmas RSA mediante JWKS rotatorio, algoritmo fijado
-por configuración, emisor, audiencia, `exp`, `iat`, `sub` y `tenant_id`. Los ámbitos y
+por configuración, emisor, audiencia, `exp`, `iat`, `nbf`, `sub` y `tenant_id`. Todos
+esos claims son obligatorios; los ámbitos y
 zonas proceden de claims verificados. La especificación OpenAPI declara autenticación
 Bearer en todas las rutas de negocio.
 

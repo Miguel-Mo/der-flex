@@ -10,7 +10,9 @@ Las curvas energéticas pueden permitir singularización, vinculación o inferen
 ## Decisión
 
 - La API pública nunca devuelve identificadores de recursos.
-- Umbral inicial `k=10` de participantes distintos por zona e intervalo.
+- Umbral absoluto `k=10` de participantes distintos por zona e intervalo; la política
+  pública rechaza cualquier configuración inferior aunque el almacén permita pruebas
+  internas con cohortes menores.
 - Las celdas bajo umbral se suprimen por completo.
 - Una celda publicada deja de mostrarse si cambia su oferta o capacidad residual.
 - No se publica un intervalo adyacente cuya cohorte difiera de otra ya publicada.

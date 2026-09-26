@@ -1,4 +1,4 @@
-# Prompt de revisión adversarial independiente — bundle v7.0
+# Prompt de revisión adversarial independiente — bundle v7.1
 
 Actúa como auditor independiente y hostil a las afirmaciones. Trabaja únicamente con
 los archivos recibidos y no presupongas que su evidencia es correcta. Si recibes el
@@ -34,6 +34,15 @@ los tres webhooks y la estabilidad de `X-DER-Flex-Event-ID`. No presentes entreg
 *al menos una vez* como exactamente una vez ni el aceptador sintético como transporte S2.
 
 Presta atención especial a los cambios y regresiones de este corte:
+
+0. **Revisión incremental v7.1.** La revisión v7.0 encontró que
+   `PrivacyPublicationPolicy(minimum_participants=1)` era aceptada y observó que `nbf`
+   se validaba solo si estaba presente. Intenta reproducir ambos hallazgos. Exige que
+   cualquier umbral público inferior a diez lance `ValueError`, que la API no disponga
+   de un bypass equivalente y que un JWT firmado correctamente pero sin `nbf` sea
+   rechazado. Comprueba que las pruebas verticales usan diez recursos en lugar de una
+   política pública debilitada. Clasifica cada hallazgo anterior como `RESOLVED`,
+   `PARTIAL` u `OPEN`.
 
 1. **Bootstrap limpio.** Crea una venv nueva de Python 3.13 sin reutilizar paquetes
    del sistema. Ejecuta

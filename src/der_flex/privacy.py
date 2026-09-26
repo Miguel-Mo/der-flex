@@ -49,6 +49,8 @@ class PrivacyPublicationPolicy:
         )
         if any(value <= 0 for value in values):
             raise ValueError("privacy publication parameters must be positive")
+        if self.minimum_participants < 10:
+            raise ValueError("public privacy threshold cannot be lower than 10")
 
     def publication_epoch(self, now: datetime | None = None) -> datetime:
         current = now or datetime.now(UTC)
